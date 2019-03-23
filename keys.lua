@@ -9,12 +9,12 @@ function unrequire(name)
   package.loaded[name] = nil
   _G[name] = nil
 end
-unrequire("mark_eats/timber")
+unrequire("timber/lib/timber_engine")
 
-local Timber = require "mark_eats/timber"
-local MusicUtil = require "mark_eats/musicutil"
-local UI = require "mark_eats/ui"
-local Formatters = require "jah/formatters"
+local Timber = require "timber/lib/timber_engine"
+local MusicUtil = require "musicutil"
+local UI = require "ui"
+local Formatters = require "formatters"
 
 engine.name = "Timber"
 
@@ -275,8 +275,8 @@ function redraw()
   
   screen.clear()
   
-  if fileselect_active or Timber.fileselect_active then
-    fileselect.redraw()
+  if Timber.file_select_active then
+    Timber.FileSelect.redraw()
     return
   end
   
@@ -383,8 +383,8 @@ function init()
   
   screen.aa(1)
   
-  local screen_refresh_metro = metro.alloc()
-  screen_refresh_metro.callback = function()
+  local screen_refresh_metro = metro.init()
+  screen_refresh_metro.event = function()
     update()
     if screen_dirty then
       redraw()

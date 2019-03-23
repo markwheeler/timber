@@ -1,22 +1,22 @@
--- Sample Player
+-- Timber Player
 --
 -- Grid or MIDI keys
 -- play samples.
 --
--- ENC1 : Page
--- KEY1+ENC1 : Sample slot
--- KEY1 (Hold) : Shift / Fine
+-- E1 : Page
+-- K1+E1 : Sample slot
+-- K1 (Hold) : Shift / Fine
 --
 -- GLOBAL PAGE:
---  KEY2 : Load folder
---  KEY1+KEY2 : Add folder
---  KEY3 : Play / Stop
---  ENC3 : BPM
+--  K2 : Load folder
+--  K1+K2 : Add folder
+--  K3 : Play / Stop
+--  E3 : BPM
 --
 -- SAMPLE PAGES:
---  KEY2 : Focus
---  KEY3 : Action
---  ENC2/3 : Params
+--  K2 : Focus
+--  K3 : Action
+--  E2/3 : Params
 --
 -- v1.0.0 Mark Eats
 --
@@ -25,12 +25,12 @@ function unrequire(name)
   package.loaded[name] = nil
   _G[name] = nil
 end
-unrequire("mark_eats/timber")
+unrequire("timber/lib/timber_engine")
 
-local Timber = require "mark_eats/timber"
-local MusicUtil = require "mark_eats/musicutil"
-local UI = require "mark_eats/ui"
-local Formatters = require "jah/formatters"
+local Timber = require "timber/lib/timber_engine"
+local MusicUtil = require "musicutil"
+local UI = require "ui"
+local Formatters = require "formatters"
 local BeatClock = require "beatclock"
 
 engine.name = "Timber"
@@ -77,6 +77,7 @@ local mod_matrix_view
 
 local current_sample_id = 0
 local shift_mode = false
+local file_select_active = false
 
 
 local function load_folder(file, add)
@@ -98,7 +99,7 @@ local function load_folder(file, add)
   file = string.sub(file, split_at + 1)
   
   local found = false
-  for k, v in ipairs(fileselect.list) do
+  for k, v in ipairs(Timber.FileSelect.list) do
     if v == file then found = true end
     if found then
       if sample_id > 255 then
@@ -495,12 +496,12 @@ end
 function GlobalView:key(n, z)
   if z == 1 then
     if n == 2 then
-        fileselect_active = true
+        file_select_active = true
         local add = shift_mode
         shift_mode = false
         Timber.shift_mode = shift_mode
-        fileselect.enter(os.getenv("HOME").."/dust", function(file)
-          fileselect_active = false
+        Timber.FileSelect.enter(_path.audio, function(file)
+          file_select_active = false
           screen_dirty = true
           if file ~= "cancel" then
             load_folder(file, add)
@@ -540,7 +541,7 @@ function GlobalView:redraw()
   
   local num_to_draw = NUM_SAMPLES
   
-  if grid_device.attached() then
+  if grid_device.device then
     num_to_draw = grid_w * grid_h
   end
   
@@ -559,7 +560,7 @@ function GlobalView:redraw()
     local SIZE = 2
     local GUTTER = 1
     
-    if grid_device.attached() and grid_h <= 8 then top = top + 12 end
+    if grid_device.device and grid_h <= 8 then top = top + 12 end
     
     local x, y = LEFT, top
     for i = 1, num_to_draw do
@@ -626,8 +627,8 @@ function redraw()
   
   screen.clear()
   
-  if fileselect_active or Timber.fileselect_active then
-    fileselect.redraw()
+  if file_select_active or Timber.file_select_active then
+    Timber.FileSelect.redraw()
     return
   end
   
@@ -843,8 +844,8 @@ function init()
   
   screen.aa(1)
   
-  local screen_redraw_metro = metro.alloc()
-  screen_redraw_metro.callback = function()
+  local screen_redraw_metro = metro.init()
+  screen_redraw_metro.event = function()
     update()
     if screen_dirty then
       redraw()
@@ -852,9 +853,9 @@ function init()
     end
   end
   
-  local grid_redraw_metro = metro.alloc()
-  grid_redraw_metro.callback = function()
-    if grid_dirty and grid_device.attached() then
+  local grid_redraw_metro = metro.init()
+  grid_redraw_metro.event = function()
+    if grid_dirty and grid_device.device then
       grid_dirty = false
       grid_redraw()
     end
