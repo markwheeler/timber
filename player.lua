@@ -48,7 +48,6 @@ local grid_w, grid_h = 16, 8
 
 local midi_in_device
 local midi_clock_in_device
-local midi_clock_out_device
 local grid_device
 
 local NUM_SAMPLES = 256
@@ -382,42 +381,52 @@ function key(n, z)
 end
 
 -- MIDI input
-local function midi_event(data)
+local function midi_event(device_id, data)
   
   local msg = midi.to_msg(data)
   local channel_param = params:get("midi_in_channel")
   
-  if channel_param == 1 or (channel_param > 1 and msg.ch == channel_param - 1) then
-    
-    -- Note off
-    if msg.type == "note_off" then
-      key_up(msg.note)
-    
-    -- Note on
-    elseif msg.type == "note_on" then
-      key_down(msg.note, msg.vel / 127)
+  -- MIDI In
+  if device_id == params:get("midi_in_device") then
+    if channel_param == 1 or (channel_param > 1 and msg.ch == channel_param - 1) then
       
-    -- Key pressure
-    elseif msg.type == "key_pressure" then
-      set_pressure_voice(msg.note, msg.val / 127)
+      -- Note off
+      if msg.type == "note_off" then
+        key_up(msg.note)
       
-    -- Channel pressure
-    elseif msg.type == "channel_pressure" then
-      set_pressure_all(msg.val / 127)
-      
-    -- Pitch bend
-    elseif msg.type == "pitchbend" then
-      local bend_st = (util.round(msg.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
-      local bend_range = params:get("bend_range")
-      set_pitch_bend_sample(msg.note, bend_st * bend_range)
-      
+      -- Note on
+      elseif msg.type == "note_on" then
+        key_down(msg.note, msg.vel / 127)
+        
+      -- Key pressure
+      elseif msg.type == "key_pressure" then
+        set_pressure_voice(msg.note, msg.val / 127)
+        
+      -- Channel pressure
+      elseif msg.type == "channel_pressure" then
+        set_pressure_all(msg.val / 127)
+        
+      -- Pitch bend
+      elseif msg.type == "pitchbend" then
+        local bend_st = (util.round(msg.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
+        local bend_range = params:get("bend_range")
+        set_pitch_bend_all(bend_st * bend_range) --TODO test
+        
+      end
     end
   end
-
+  
+  -- MIDI Clock In
+  if device_id == params:get("midi_clock_in_device") then
+    beat_clock:process_midi(data)
+    if not beat_clock.playing then
+      screen_dirty = true
+    end
+  end
 end
 
 -- Grid event
-local function grid_event(x, y, z)
+local function grid_key(x, y, z)
   local sample_id = (y - 1) * grid_w + x - 1
   if z == 1 then
     key_down(sample_id)
@@ -453,11 +462,11 @@ function grid_redraw()
     end
   end
   
-  grid_device.all(0)
+  grid_device:all(0)
   for k, v in pairs(leds) do
-    grid_device.led(id_to_x(k), id_to_y(k), v)
+    grid_device:led(id_to_x(k), id_to_y(k), v)
   end
-  grid_device.refresh()
+  grid_device:refresh()
 end
 
 
@@ -657,25 +666,26 @@ function redraw()
   screen.update()
 end
 
+local function reconnect_midi_ins()
+  midi_in_device.event = nil
+  midi_clock_in_device.event = nil
+  midi_in_device = midi.connect(params:get("midi_in_device"))
+  midi_clock_in_device = midi.connect(params:get("midi_clock_in_device"))
+  midi_in_device.event = function(data) midi_event(params:get("midi_in_device"), data) end
+  midi_clock_in_device.event = function(data) midi_event(params:get("midi_clock_in_device"), data) end
+end
+
 
 function init()
   
   midi_in_device = midi.connect(1)
-  midi_in_device.event = midi_event
+  midi_in_device.event = function(data) midi_event(1, data) end
   
   midi_clock_in_device = midi.connect(1)
-  midi_clock_in_device.event = function(data)
-    beat_clock:process_midi(data)
-    if not beat_clock.playing then
-      screen_dirty = true
-    end
-  end
-  
-  midi_clock_out_device = midi.connect(1)
-  midi_clock_out_device.event = function() end
+  midi_clock_in_device.event = function(data) midi_event(1, data) end
   
   grid_device = grid.connect(1)
-  grid_device.event = grid_event
+  grid_device.key = grid_key
   
   pages = UI.Pages.new(1, 8)
   
@@ -726,27 +736,18 @@ function init()
   
   params:add{type = "number", id = "grid_device", name = "Grid Device", min = 1, max = 4, default = 1,
     action = function(value)
-      grid_device.all(0)
-      grid_device.refresh()
-      grid_device:reconnect(value)
+      grid_device:all(0)
+      grid_device:refresh()
+      grid_device.key = nil
+      grid_device = grid.connect(value)
+      grid_device.key = grid_key
     end}
-  params:add{type = "number", id = "midi_in_device", name = "MIDI In Device", min = 1, max = 4, default = 1,
-    action = function(value)
-      midi_in_device:reconnect(value)
-    end}
+  params:add{type = "number", id = "midi_in_device", name = "MIDI In Device", min = 1, max = 4, default = 1, action = reconnect_midi_ins}
   local channels = {"All"}
   for i = 1, 16 do table.insert(channels, i) end
   params:add{type = "option", id = "midi_in_channel", name = "MIDI In Channel", options = channels}
     
-  params:add{type = "number", id = "clock_midi_in_device", name = "MIDI Clock In Device", min = 1, max = 4, default = 1,
-    action = function(value)
-      midi_clock_in_device:reconnect(value)
-    end}
-    
-  params:add{type = "number", id = "midi_clock_out_device", name = "MIDI Clock Out Device", min = 1, max = 4, default = 1,
-    action = function(value)
-      midi_clock_out_device:reconnect(value)
-    end}
+  params:add{type = "number", id = "midi_clock_in_device", name = "MIDI Clock In Device", min = 1, max = 4, default = 1, action = reconnect_midi_ins}
   
   params:add{type = "option", id = "clock", name = "Clock", options = {"Internal", "External"}, default = beat_clock.external or 2 and 1,
     action = function(value)
