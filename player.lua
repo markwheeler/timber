@@ -434,8 +434,8 @@ end
 function grid_redraw()
   
   if grid_device then
-    grid_w = grid_device.cols()
-    grid_h = grid_device.rows()
+    grid_w = grid_device.cols
+    grid_h = grid_device.rows
     if grid_w ~= 8 and grid_w ~= 16 then grid_w = 16 end
     if grid_h ~= 8 and grid_h ~= 16 then grid_h = 8 end
   end
