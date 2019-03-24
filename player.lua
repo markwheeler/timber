@@ -137,6 +137,15 @@ local function id_to_y(id)
   return math.ceil(id / grid_w)
 end
 
+local function reconnect_midi_ins()
+  midi_in_device.event = nil
+  midi_clock_in_device.event = nil
+  midi_in_device = midi.connect(params:get("midi_in_device"))
+  midi_clock_in_device = midi.connect(params:get("midi_clock_in_device"))
+  midi_in_device.event = function(data) midi_event(params:get("midi_in_device"), data) end
+  midi_clock_in_device.event = function(data) midi_event(params:get("midi_clock_in_device"), data) end
+end
+
 local function note_on(sample_id, vel)
   if Timber.samples_meta[sample_id].num_frames > 0 then
     vel = vel or 1
@@ -664,15 +673,6 @@ function redraw()
   end
   
   screen.update()
-end
-
-local function reconnect_midi_ins()
-  midi_in_device.event = nil
-  midi_clock_in_device.event = nil
-  midi_in_device = midi.connect(params:get("midi_in_device"))
-  midi_clock_in_device = midi.connect(params:get("midi_clock_in_device"))
-  midi_in_device.event = function(data) midi_event(params:get("midi_in_device"), data) end
-  midi_clock_in_device.event = function(data) midi_event(params:get("midi_clock_in_device"), data) end
 end
 
 

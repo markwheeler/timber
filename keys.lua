@@ -1,4 +1,4 @@
--- Sample Keys
+-- Timber Keys
 --
 -- Sample keyboard.
 --
@@ -347,7 +347,9 @@ function init()
   -- Add params
   
   params:add{type = "number", id = "midi_device", name = "MIDI Device", min = 1, max = 4, default = 1, action = function(value)
-    midi_in_device:reconnect(value)
+    midi_in_device.event = nil
+    midi_in_device = midi.connect(value)
+    midi_in_device.event = midi_event
   end}
   params:add{type = "number", id = "bend_range", name = "Pitch Bend Range", min = 1, max = 48, default = 2}
   
