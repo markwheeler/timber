@@ -4,7 +4,7 @@
 
 Engine_Timber : CroneEngine {
 
-	var maxVoices = 6;
+	var maxVoices = 8;
 	var maxSamples = 256;
 	var waveformDisplayRes = 60;
 
@@ -107,10 +107,10 @@ Engine_Timber : CroneEngine {
 			ampModLfo: 0,
 		);
 
-		voiceGroup = ParGroup.new(context.xg);
+		voiceGroup = Group.new(context.xg);
 		voiceList = List.new();
 
-		globalLfoBus = Bus.audio(context.server, 1);
+		globalLfoBus = Bus.control(context.server, 1);
 		mixerBus = Bus.audio(context.server, 2);
 		players = Array.newClear(4);
 
@@ -293,16 +293,16 @@ Engine_Timber : CroneEngine {
 
 			lfoFreq = Lag.kr(lfoFreq, 0.005);
 			lfoOscArray = [
-				SinOsc.ar(lfoFreq),
-				LFTri.ar(lfoFreq),
-				LFSaw.ar(lfoFreq),
-				LFPulse.ar(lfoFreq, mul: 2, add: -1),
-				LFNoise0.ar(lfoFreq)
+				SinOsc.kr(lfoFreq),
+				LFTri.kr(lfoFreq),
+				LFSaw.kr(lfoFreq),
+				LFPulse.kr(lfoFreq, mul: 2, add: -1),
+				LFNoise0.kr(lfoFreq)
 			];
-			lfo = Select.ar(lfoWaveShape, lfoOscArray);
-			lfo = Lag.ar(lfo, 0.005);
+			lfo = Select.kr(lfoWaveShape, lfoOscArray);
+			lfo = Lag.kr(lfo, 0.005);
 
-			Out.ar(out, lfo);
+			Out.kr(out, lfo);
 
 		}).play(target:context.xg, args: [\out, globalLfoBus], addAction: \addToHead);
 
@@ -326,7 +326,7 @@ Engine_Timber : CroneEngine {
 				lfo, lfoOscArray, killEnvelope, ampEnvelope, modEnvelope, controlLag = 0.005;
 
 				// LFO
-				globalLfo = Line.kr(start: (globalLfoFade < 0), end: (globalLfoFade >= 0), dur: globalLfoFade.abs, mul: In.ar(globalLfo, 1));
+				globalLfo = Line.kr(start: (globalLfoFade < 0), end: (globalLfoFade >= 0), dur: globalLfoFade.abs, mul: In.kr(globalLfo, 1));
 
 				lfoFreq = Lag.kr(lfoFreq, controlLag);
 				lfoOscArray = [

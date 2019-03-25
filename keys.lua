@@ -34,7 +34,7 @@ local lfos_view
 local mod_matrix_view
 
 local NUM_SAMPLES = 16
-local current_sample_id = 1
+local current_sample_id = 0
 local shift_mode = false
 
 
