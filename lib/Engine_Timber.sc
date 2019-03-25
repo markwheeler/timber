@@ -15,10 +15,10 @@ Engine_Timber : CroneEngine {
 
 	var players;
 	var synthNames;
-	var globalLfo;
+	var lfos;
 	var mixer;
 
-	var globalLfoBus;
+	var lfoBus;
 	var mixerBus;
 
 	var loadQueue;
@@ -57,10 +57,8 @@ Engine_Timber : CroneEngine {
 			pitchBendRatio: 1,
 			pressure: 0,
 
-			globalLfoFade: 0,
-			lfoFreq: 4,
-			lfoWaveShape: 3,
-			lfoFade: 0,
+			lfo1Fade: 0,
+			lfo2Fade: 0,
 
 			startFrame: 0,
 			endFrame: 0,
@@ -72,8 +70,8 @@ Engine_Timber : CroneEngine {
 			timeStretch: 0,
 			freqMultiplier: 1,
 
-			freqModGlobalLfo: 0,
-			freqModLfo: 0,
+			freqModLfo1: 0,
+			freqModLfo2: 0,
 			freqModEnv: 0,
 
 			ampAttack: 0.003,
@@ -94,23 +92,23 @@ Engine_Timber : CroneEngine {
 			filterBp: 0,
 			filterHp: 0,
 			filterTracking: 1,
-			filterFreqModGlobalLfo: 0,
-			filterFreqModLfo: 0,
+			filterFreqModLfo1: 0,
+			filterFreqModLfo2: 0,
 			filterFreqModEnv: 0,
 
 			pan: 0,
-			panModGlobalLfo: 0,
-			panModLfo: 0,
+			panModLfo1: 0,
+			panModLfo2: 0,
 			panModEnv: 0,
 			amp: 0,
-			ampModGlobalLfo: 0,
-			ampModLfo: 0,
+			ampModLfo1: 0,
+			ampModLfo2: 0,
 		);
 
 		voiceGroup = Group.new(context.xg);
 		voiceList = List.new();
 
-		globalLfoBus = Bus.control(context.server, 1);
+		lfoBus = Bus.control(context.server, 2);
 		mixerBus = Bus.audio(context.server, 2);
 		players = Array.newClear(4);
 
@@ -135,7 +133,7 @@ Engine_Timber : CroneEngine {
 				arg freqRatio = 1, sampleRate, gate = 0, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame, crossfadeDuration;
 
 				var signal, crossfadeSignal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
-				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, loopChanged, loopChangedEnv, crossfadeControl, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration, controlLag = 0.005;
+				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, loopChanged, loopChangedEnv, crossfadeControl, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration;
 
 				latchedStartFrame = Latch.kr(startFrame, 1);
 				firstFrame = startFrame.min(endFrame);
@@ -287,24 +285,29 @@ Engine_Timber : CroneEngine {
 
 		// SynthDefs
 
-		globalLfo = SynthDef(\globalLfo, {
-			arg out, lfoFreq = 2, lfoWaveShape = 0;
-			var lfo, lfoOscArray;
+		lfos = SynthDef(\lfos, {
+			arg out, lfo1Freq = 2, lfo1WaveShape = 0, lfo2Freq = 4, lfo2WaveShape = 3;
+			var lfos, i_controlLag = 0.005;
 
-			lfoFreq = Lag.kr(lfoFreq, 0.005);
-			lfoOscArray = [
-				SinOsc.kr(lfoFreq),
-				LFTri.kr(lfoFreq),
-				LFSaw.kr(lfoFreq),
-				LFPulse.kr(lfoFreq, mul: 2, add: -1),
-				LFNoise0.kr(lfoFreq)
-			];
-			lfo = Select.kr(lfoWaveShape, lfoOscArray);
-			lfo = Lag.kr(lfo, 0.005);
+			var lfoFreqs = [Lag.kr(lfo1Freq, i_controlLag), Lag.kr(lfo2Freq, i_controlLag)];
+			var lfoWaveShapes = [lfo1WaveShape, lfo2WaveShape];
 
-			Out.kr(out, lfo);
+			lfos = Array.fill(2, {
+				arg i;
+				var lfo, lfoOscArray = [
+					SinOsc.kr(lfoFreqs[i]),
+					LFTri.kr(lfoFreqs[i]),
+					LFSaw.kr(lfoFreqs[i]),
+					LFPulse.kr(lfoFreqs[i], mul: 2, add: -1),
+					LFNoise0.kr(lfoFreqs[i])
+				];
+				lfo = Select.kr(lfoWaveShapes[i], lfoOscArray);
+				lfo = Lag.kr(lfo, 0.005);
+			});
 
-		}).play(target:context.xg, args: [\out, globalLfoBus], addAction: \addToHead);
+			Out.kr(out, lfos);
+
+		}).play(target:context.xg, args: [\out, lfoBus], addAction: \addToHead);
 
 
 		synthNames = Array.with(\monoBufferVoice, \stereoBufferVoice, \monoStreamingVoice, \stereoStreamingVoice);
@@ -315,30 +318,18 @@ Engine_Timber : CroneEngine {
 			SynthDef(name, {
 
 				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, killDuration = 0.01, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
-				globalLfo, globalLfoFade, lfoFreq, lfoWaveShape, lfoFade,
-				freqModGlobalLfo, freqModLfo, freqModEnv, timeStretch, freqMultiplier,
+				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, timeStretch, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
-				filterFreq, filterReso, filterLp, filterBp, filterHp, filterTracking, filterFreqModGlobalLfo, filterFreqModLfo, filterFreqModEnv,
-				pan, panModGlobalLfo, panModLfo, panModEnv, ampModGlobalLfo, ampModLfo;
+				filterFreq, filterReso, filterLp, filterBp, filterHp, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv,
+				pan, panModLfo1, panModLfo2, panModEnv, ampModLfo1, ampModLfo2;
 
 				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
-				lfo, lfoOscArray, killEnvelope, ampEnvelope, modEnvelope, controlLag = 0.005;
+				killEnvelope, ampEnvelope, modEnvelope, lfo1, lfo2, i_controlLag = 0.005;
 
-				// LFO
-				globalLfo = Line.kr(start: (globalLfoFade < 0), end: (globalLfoFade >= 0), dur: globalLfoFade.abs, mul: In.kr(globalLfo, 1));
-
-				lfoFreq = Lag.kr(lfoFreq, controlLag);
-				lfoOscArray = [
-					SinOsc.ar(lfoFreq),
-					LFTri.ar(lfoFreq),
-					LFSaw.ar(lfoFreq),
-					LFPulse.ar(lfoFreq, mul: 2, add: -1),
-					LFNoise0.ar(lfoFreq)
-				];
-				lfo = Select.ar(lfoWaveShape, lfoOscArray);
-				lfo = Line.kr(start: (lfoFade < 0), end: (lfoFade >= 0), dur: lfoFade.abs, mul: lfo);
-				lfo = Lag.ar(lfo, 0.005);
+				// LFOs
+				lfo1 = Line.kr(start: (lfo1Fade < 0), end: (lfo1Fade >= 0), dur: lfo1Fade.abs, mul: In.kr(lfos, 1));
+				lfo2 = Line.kr(start: (lfo2Fade < 0), end: (lfo2Fade >= 0), dur: lfo2Fade.abs, mul: In.kr(lfos, 2)[1]);
 
 				// Ignore gate for one shots
 				gate = gate.max(InRange.kr(playMode, 3, 3));
@@ -350,7 +341,7 @@ Engine_Timber : CroneEngine {
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
 
 				// Freq modulation
-				freqModRatio = ((globalLfo * 12 * freqModGlobalLfo) + (lfo * 12 * freqModLfo) + (modEnvelope * 12 * freqModEnv)).midiratio;
+				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
 				freq = freq * detuneRatio * pitchBendRatio * pitchBendSampleRatio;
 				freq = (freq * freqModRatio).clip(20, i_nyquist);
 				freqRatio = (freq / originalFreq);
@@ -382,17 +373,17 @@ Engine_Timber : CroneEngine {
 				]);
 				filterFreqRatio = filterFreqRatio / i_cFreq;
 				filterFreq = filterFreq * filterFreqRatio;
-				filterFreq = filterFreq * ((48 * globalLfo * filterFreqModGlobalLfo) + (48 * lfo * filterFreqModLfo) + (96 * modEnvelope * filterFreqModEnv)).midiratio;
+				filterFreq = filterFreq * ((48 * lfo1 * filterFreqModLfo1) + (48 * lfo2 * filterFreqModLfo2) + (96 * modEnvelope * filterFreqModEnv)).midiratio;
 				filterFreq = filterFreq * (1 + (0.25 * (pressure + pressureSample)));
 				filterFreq = filterFreq.clip(20, 20000);
 				signal = SVF.ar(signal, filterFreq, filterReso * 0.98, filterLp, filterBp, filterHp);
 
 				// Panning
-				pan = (pan + (globalLfo * panModGlobalLfo) + (lfo * panModLfo) + (modEnvelope * panModEnv)).clip(-1, 1);
+				pan = (pan + (lfo1 * panModLfo1) + (lfo2 * panModLfo2) + (modEnvelope * panModEnv)).clip(-1, 1);
 				signal = Splay.ar(inArray: signal, spread: 1 - pan.abs, center: pan);
 
 				// Amp
-				signal = signal * globalLfo.range(1 - ampModGlobalLfo, 1) * lfo.range(1 - ampModLfo, 1) * ampEnvelope * killEnvelope * vel;
+				signal = signal * lfo1.range(1 - ampModLfo1, 1) * lfo2.range(1 - ampModLfo2, 1) * ampEnvelope * killEnvelope * vel;
 				signal = tanh(signal * amp.dbamp * (1 + pressure + pressureSample)).softclip;
 
 				Out.ar(out, signal);
@@ -825,17 +816,15 @@ Engine_Timber : CroneEngine {
 			\loopEndFrame, sample.loopEndFrame,
 			\crossfadeDuration, sample.crossfadeDuration,
 
-			\globalLfo, globalLfoBus,
-			\globalLfoFade, sample.globalLfoFade,
-			\lfoFreq, sample.lfoFreq,
-			\lfoWaveShape, sample.lfoWaveShape,
-			\lfoFade, sample.lfoFade,
+			\lfos, lfoBus,
+			\lfo1Fade, sample.lfo1Fade,
+			\lfo2Fade, sample.lfo2Fade,
 
 			\timeStretch, sample.timeStretch,
 			\freqMultiplier, sample.freqMultiplier,
 
-			\freqModGlobalLfo, sample.freqModGlobalLfo,
-			\freqModLfo, sample.freqModLfo,
+			\freqModLfo1, sample.freqModLfo1,
+			\freqModLfo2, sample.freqModLfo2,
 			\freqModEnv, sample.freqModEnv,
 
 			\ampAttack, sample.ampAttack,
@@ -856,18 +845,18 @@ Engine_Timber : CroneEngine {
 			\filterBp, sample.filterBp,
 			\filterHp, sample.filterHp,
 			\filterTracking, sample.filterTracking,
-			\filterFreqModGlobalLfo, sample.filterFreqModGlobalLfo,
-			\filterFreqModLfo, sample.filterFreqModLfo,
+			\filterFreqModLfo1, sample.filterFreqModLfo1,
+			\filterFreqModLfo2, sample.filterFreqModLfo2,
 			\filterFreqModEnv, sample.filterFreqModEnv,
 
 			\pan, sample.pan,
-			\panModGlobalLfo, sample.panModGlobalLfo,
-			\panModLfo, sample.panModLfo,
+			\panModLfo1, sample.panModLfo1,
+			\panModLfo2, sample.panModLfo2,
 			\panModEnv, sample.panModEnv,
 
 			\amp, sample.amp,
-			\ampModGlobalLfo, sample.ampModGlobalLfo,
-			\ampModLfo, sample.ampModLfo,
+			\ampModLfo1, sample.ampModLfo1,
+			\ampModLfo2, sample.ampModLfo2,
 
 		], target: voiceGroup).onFree({
 
@@ -1022,12 +1011,20 @@ Engine_Timber : CroneEngine {
 			voiceGroup.set(\pressure, pressureAll);
 		});
 
-		this.addCommand(\globalLfoFreq, "f", { arg msg;
-			globalLfo.set(\lfoFreq, msg[1]);
+		this.addCommand(\lfo1Freq, "f", { arg msg;
+			lfos.set(\lfo1Freq, msg[1]);
 		});
 
-		this.addCommand(\globalLfoWaveShape, "i", { arg msg;
-			globalLfo.set(\lfoWaveShape, msg[1]);
+		this.addCommand(\lfo1WaveShape, "i", { arg msg;
+			lfos.set(\lfo1WaveShape, msg[1]);
+		});
+
+		this.addCommand(\lfo2Freq, "f", { arg msg;
+			lfos.set(\lfo2Freq, msg[1]);
+		});
+
+		this.addCommand(\lfo2WaveShape, "i", { arg msg;
+			lfos.set(\lfo2WaveShape, msg[1]);
 		});
 
 
@@ -1084,34 +1081,24 @@ Engine_Timber : CroneEngine {
 			this.setArgOnSample(msg[1], \crossfadeDuration, msg[2]);
 		});
 
-		this.addCommand(\globalLfoFade, "if", {
+		this.addCommand(\lfo1Fade, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \globalLfoFade, msg[2]);
+			this.setArgOnSample(msg[1], \lfo1Fade, msg[2]);
 		});
 
-		this.addCommand(\lfoFreq, "if", {
+		this.addCommand(\lfo2Fade, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \lfoFreq, msg[2]);
+			this.setArgOnSample(msg[1], \lfo2Fade, msg[2]);
 		});
 
-		this.addCommand(\lfoWaveShape, "ii", {
+		this.addCommand(\freqModLfo1, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \lfoWaveShape, msg[2]);
+			this.setArgOnSample(msg[1], \freqModLfo1, msg[2]);
 		});
 
-		this.addCommand(\lfoFade, "if", {
+		this.addCommand(\freqModLfo2, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \lfoFade, msg[2]);
-		});
-
-		this.addCommand(\freqModGlobalLfo, "if", {
-			arg msg;
-			this.setArgOnSample(msg[1], \freqModGlobalLfo, msg[2]);
-		});
-
-		this.addCommand(\freqModLfo, "if", {
-			arg msg;
-			this.setArgOnSample(msg[1], \freqModLfo, msg[2]);
+			this.setArgOnSample(msg[1], \freqModLfo2, msg[2]);
 		});
 
 		this.addCommand(\freqModEnv, "if", {
@@ -1202,14 +1189,14 @@ Engine_Timber : CroneEngine {
 			this.setArgOnSample(msg[1], \filterTracking, msg[2]);
 		});
 
-		this.addCommand(\filterFreqModGlobalLfo, "if", {
+		this.addCommand(\filterFreqModLfo1, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \filterFreqModGlobalLfo, msg[2]);
+			this.setArgOnSample(msg[1], \filterFreqModLfo1, msg[2]);
 		});
 
-		this.addCommand(\filterFreqModLfo, "if", {
+		this.addCommand(\filterFreqModLfo2, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \filterFreqModLfo, msg[2]);
+			this.setArgOnSample(msg[1], \filterFreqModLfo2, msg[2]);
 		});
 
 		this.addCommand(\filterFreqModEnv, "if", {
@@ -1222,14 +1209,14 @@ Engine_Timber : CroneEngine {
 			this.setArgOnSample(msg[1], \pan, msg[2]);
 		});
 
-		this.addCommand(\panModGlobalLfo, "if", {
+		this.addCommand(\panModLfo1, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \panModGlobalLfo, msg[2]);
+			this.setArgOnSample(msg[1], \panModLfo1, msg[2]);
 		});
 
-		this.addCommand(\panModLfo, "if", {
+		this.addCommand(\panModLfo2, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \panModLfo, msg[2]);
+			this.setArgOnSample(msg[1], \panModLfo2, msg[2]);
 		});
 
 		this.addCommand(\panModEnv, "if", {
@@ -1242,14 +1229,14 @@ Engine_Timber : CroneEngine {
 			this.setArgOnSample(msg[1], \amp, msg[2]);
 		});
 
-		this.addCommand(\ampModGlobalLfo, "if", {
+		this.addCommand(\ampModLfo1, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \ampModGlobalLfo, msg[2]);
+			this.setArgOnSample(msg[1], \ampModLfo1, msg[2]);
 		});
 
-		this.addCommand(\ampModLfo, "if", {
+		this.addCommand(\ampModLfo2, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \ampModLfo, msg[2]);
+			this.setArgOnSample(msg[1], \ampModLfo2, msg[2]);
 		});
 
 	}
@@ -1273,7 +1260,7 @@ Engine_Timber : CroneEngine {
 		voiceGroup.free;
 		voiceList.free;
 		players.free;
-		globalLfo.free;
+		lfos.free;
 		mixer.free;
 	}
 }
