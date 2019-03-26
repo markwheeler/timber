@@ -88,9 +88,7 @@ Engine_Timber : CroneEngine {
 
 			filterFreq: 20000,
 			filterReso: 0,
-			filterLp: 1,
-			filterBp: 0,
-			filterHp: 0,
+			filterType: 0,
 			filterTracking: 1,
 			filterFreqModLfo1: 0,
 			filterFreqModLfo2: 0,
@@ -321,7 +319,7 @@ Engine_Timber : CroneEngine {
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, timeStretch, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
-				filterFreq, filterReso, filterLp, filterBp, filterHp, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv,
+				filterFreq, filterReso, filterType, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv,
 				pan, panModLfo1, panModLfo2, panModEnv, ampModLfo1, ampModLfo2;
 
 				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
@@ -366,7 +364,7 @@ Engine_Timber : CroneEngine {
 				});
 				signal = Decimator.ar(signal, downSampleTo, bitDepth);
 
-				// 12dB state variable filter
+				// 12dB LP/HP filter
 				filterFreqRatio = Select.kr((freq < i_cFreq), [
 					i_cFreq + ((freq - i_cFreq) * filterTracking),
 					i_cFreq - ((i_cFreq - freq) * filterTracking)
@@ -376,7 +374,11 @@ Engine_Timber : CroneEngine {
 				filterFreq = filterFreq * ((48 * lfo1 * filterFreqModLfo1) + (48 * lfo2 * filterFreqModLfo2) + (96 * modEnvelope * filterFreqModEnv)).midiratio;
 				filterFreq = filterFreq * (1 + (0.25 * (pressure + pressureSample)));
 				filterFreq = filterFreq.clip(20, 20000);
-				signal = SVF.ar(signal, filterFreq, filterReso * 0.98, filterLp, filterBp, filterHp);
+				filterReso = filterReso.linlin(0, 1, 1, 0.02);
+				signal = Select.ar(filterType, [
+					RLPF.ar(signal, filterFreq, filterReso),
+					RHPF.ar(signal, filterFreq, filterReso)
+				]);
 
 				// Panning
 				pan = (pan + (lfo1 * panModLfo1) + (lfo2 * panModLfo2) + (modEnvelope * panModEnv)).clip(-1, 1);
@@ -841,9 +843,7 @@ Engine_Timber : CroneEngine {
 
 			\filterFreq, sample.filterFreq,
 			\filterReso, sample.filterReso,
-			\filterLp, sample.filterLp,
-			\filterBp, sample.filterBp,
-			\filterHp, sample.filterHp,
+			\filterType, sample.filterType,
 			\filterTracking, sample.filterTracking,
 			\filterFreqModLfo1, sample.filterFreqModLfo1,
 			\filterFreqModLfo2, sample.filterFreqModLfo2,
@@ -1178,10 +1178,7 @@ Engine_Timber : CroneEngine {
 
 		this.addCommand(\filterType, "ii", {
 			arg msg;
-			var lp = msg[2] == 0, bp = msg[2] == 1, hp = msg[2] == 2;
-			this.setArgOnSample(msg[1], \filterLp, lp.asInt);
-			this.setArgOnSample(msg[1], \filterBp, bp.asInt);
-			this.setArgOnSample(msg[1], \filterHp, hp.asInt);
+			this.setArgOnSample(msg[1], \filterType, msg[2]);
 		});
 
 		this.addCommand(\filterTracking, "if", {

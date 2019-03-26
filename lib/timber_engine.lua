@@ -79,7 +79,7 @@ specs.LFO_1_FREQ = ControlSpec.new(0.05, 20, "exp", 0, 2, "Hz")
 specs.LFO_2_FREQ = ControlSpec.new(0.05, 20, "exp", 0, 4, "Hz")
 options.LFO_WAVE_SHAPE = {"Sine", "Triangle", "Saw", "Square", "Random"}
 specs.LFO_FADE = ControlSpec.new(-10, 10, "lin", 0, 0, "s")
-options.FILTER_TYPE = {"Low Pass", "Band Pass", "High Pass"}
+options.FILTER_TYPE = {"Low Pass", "High Pass"}
 specs.FILTER_FREQ = ControlSpec.new(20, 20000, "exp", 0, 20000, "Hz")
 specs.FILTER_RESONANCE = ControlSpec.new(0, 1, "lin", 0, 0, "")
 specs.FILTER_TRACKING = ControlSpec.new(0, 2, "lin", 0, 1, ":1")
@@ -1311,8 +1311,6 @@ Timber.UI.FilterAmp.__index = Timber.UI.FilterAmp
 local function filter_type_num_to_string(type_num)
   local filter_type_string
   if type_num == 2 then
-    filter_type_string = "bandpass"
-  elseif type_num == 3 then
     filter_type_string = "highpass"
   else
     filter_type_string = "lowpass"
@@ -1404,8 +1402,6 @@ function Timber.UI.FilterAmp:redraw()
   local filter_type = params:get("filter_type_" .. self.sample_id)
   local type_short
   if filter_type == 2 then
-    type_short = "BP"
-  elseif filter_type == 3 then
     type_short = "HP"
   else
     type_short = "LP"
