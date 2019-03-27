@@ -374,6 +374,8 @@ function key(n, z)
       mod_env_view:key(n, z)
     elseif pages.index == 7 then
       lfos_view:key(n, z)
+    elseif pages.index == 8 then
+      mod_matrix_view:key(n, z)
     end
   end
   

@@ -149,20 +149,6 @@ function key(n, z)
     
   else
     
-    -- TODO temp note perf test
-    if pages.index == 1 and z == 1 then
-      local num_notes = 3
-      if n == 2 then
-        for i = 1, num_notes do
-          note_off(i)
-        end
-      elseif n == 3 then
-        for i = 1, num_notes do
-          note_on(i, 0, 27.5 * math.pow(2, i / 2), 1)
-        end
-      end
-    end
-    
     if pages.index == 2 then
       sample_setup_view:key(n, z)
     elseif pages.index == 3 then
@@ -175,6 +161,8 @@ function key(n, z)
       mod_env_view:key(n, z)
     elseif pages.index == 7 then
       lfos_view:key(n, z)
+    elseif pages.index == 8 then
+      mod_matrix_view:key(n, z)
     end
   end
   
@@ -232,17 +220,34 @@ GlobalView.__index = GlobalView
 
 function GlobalView.new(sample_id)
   local global = {
-    sample_id = sample_id or 1
+    sample_id = sample_id or 1,
+    particle_properties = {}
   }
+  
+  -- Generate random properties for particles
+  for i = 0, 127 do
+    global.particle_properties[i] = {}
+    global.particle_properties[i].level = math.random(1, 5)
+    global.particle_properties[i].length = math.random(4, 9)
+    if math.random() > 0.5 then
+      global.particle_properties[i].y = math.random(3, 20)
+    else
+      global.particle_properties[i].y = math.random(43, 60)
+    end
+  end
+  
   setmetatable(GlobalView, {__index = GlobalView})
   setmetatable(global, GlobalView)
   return global
 end
 
 function GlobalView:redraw()
-  local x, y = 4, 27
+  local text_x, text_y = 4, 29
+  local PARTICLES_X, PARTICLES_W = 4, 120
   for i = 0, NUM_SAMPLES - 1 do
-    screen.move(x, y)
+    
+    -- Draw numbers
+    screen.move(text_x, text_y)
     if Timber.samples_meta[i] and Timber.samples_meta[i].num_frames > 0 then
       if Timber.samples_meta[i].playing then screen.level(15) else screen.level(3) end
       screen.text(i)
@@ -251,11 +256,24 @@ function GlobalView:redraw()
       screen.text("/")
     end
     if (i + 1) % 8 == 0 then
-      x = 4
-      y = y + 11
+      text_x = 4
+      text_y = text_y + 11
     else
-      x = x + 14
+      text_x = text_x + 14
     end
+    
+    -- Draw particles
+    if Timber.samples_meta[i].playing then
+      for k, v in pairs(Timber.samples_meta[i].positions) do
+        local note = k % 128
+        local position_x = PARTICLES_X + util.round(v * (PARTICLES_W - 1 + self.particle_properties[note].length))
+        screen.move(util.clamp(position_x, PARTICLES_X, PARTICLES_X + PARTICLES_W - 1), self.particle_properties[note].y + 0.5)
+        screen.line(position_x - self.particle_properties[note].length, self.particle_properties[note].y + 0.5)
+        screen.level(self.particle_properties[note].level)
+        screen.stroke()
+      end
+    end
+    
   end
   screen.fill()
 end
@@ -312,7 +330,7 @@ local function callback_set_screen_dirty(id)
 end
 
 local function callback_set_waveform_dirty(id)
-  if (id == nil or id == current_sample_id) and pages.index == 3 then
+  if ((id == nil or id == current_sample_id) and pages.index == 3) or pages.index == 1 then
     screen_dirty = true
   end
 end
