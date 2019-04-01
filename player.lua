@@ -3,6 +3,9 @@
 -- Grid or MIDI keys
 -- play samples.
 --
+-- v1.0.0 Mark Eats
+-- llllllll.co/t/xxxxxxxxxxx
+--
 -- E1 : Page
 -- K1+E1 : Sample slot
 -- K1 (Hold) : Shift / Fine
@@ -17,8 +20,6 @@
 --  K2 : Focus
 --  K3 : Action
 --  E2/3 : Params
---
--- v1.0.0 Mark Eats
 --
 
 function unrequire(name)

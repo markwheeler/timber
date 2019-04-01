@@ -62,7 +62,6 @@ options.PLAY_MODE_STREAMING_DEFAULT = 1
 options.PLAY_MODE_IDS = {{0, 1, 2, 3}, {1, 2, 3}}
 
 specs.CROSSFADE_DURATION = ControlSpec.new(0, 500, "lin", 1, 10, "ms")
-options.MODE = {"Re-Pitch", "Time Stretch"}
 
 options.SCALE_BY = {"Percentage", "Length", "Bars"}
 options.SCALE_BY_NO_BARS = {"Percentage", "Length"}
@@ -186,7 +185,6 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   params:set("original_freq_" .. id, 60)
   params:set("detune_cents_" .. id, 0)
   params:set("crossfade_duration_" .. id, specs.CROSSFADE_DURATION.default)
-  params:set("mode_" .. id, 1)
   params:set("scale_by_" .. id, 1)
   update_by_bars_options(id)
   local duration = num_frames / sample_rate
@@ -227,7 +225,7 @@ function Timber.clear_samples(first, last)
   
   local param_ids = {
     "sample", "quality", "original_freq", "detune_cents", "play_mode", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame", "crossfade_duration",
-    "mode", "scale_by", "by_percentage", "by_length", "by_bars",
+    "scale_by", "by_percentage", "by_length", "by_bars",
     "lfo_1_fade", "lfo_2_fade",
     "freq_mod_lfo_1", "freq_mod_lfo_2", "freq_mod_env",
     "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release",
@@ -656,11 +654,6 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   
   params:add_separator()
   
-  params:add{type = "option", id = "mode_" .. id, name = "Mode", options = options.MODE, default = 1, action = function(value)
-    engine.timeStretch(id, value - 1)
-    Timber.views_changed_callback(id)
-    Timber.setup_params_dirty = true
-  end}
   local scale_by_options
   if include_beat_params then scale_by_options = options.SCALE_BY
   else scale_by_options = options.SCALE_BY_NO_BARS end
@@ -906,12 +899,11 @@ local function update_setup_params(self)
     "original_freq_" .. self.sample_id,
     "detune_cents_" .. self.sample_id,
     "crossfade_duration_" .. self.sample_id,
-    "mode_" .. self.sample_id,
     "scale_by_" .. self.sample_id,
     scale
   }
   
-  self.names_list.entries = {"Load", "Clear", "Quality", "Original Freq", "Detune", "Crossfade", "Mode", "Scale By", "Scale"}
+  self.names_list.entries = {"Load", "Clear", "Quality", "Original Freq", "Detune", "Crossfade", "Scale By", "Scale"}
   
   for _, v in ipairs(extra_param_ids) do
     table.insert(self.names_list.entries, params:lookup_param(v .. "_" .. self.sample_id).name)
