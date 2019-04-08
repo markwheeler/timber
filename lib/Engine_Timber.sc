@@ -4,7 +4,8 @@
 
 Engine_Timber : CroneEngine {
 
-	var maxVoices = 8;
+	var maxVoices = 5;
+	var numActiveVoices = 0;
 	var maxSamples = 256;
 	var waveformDisplayRes = 60;
 
@@ -67,7 +68,6 @@ Engine_Timber : CroneEngine {
 			loopEndFrame: 0,
 			crossfadeDuration: 0.01,
 
-			timeStretch: 0,
 			freqMultiplier: 1,
 
 			freqModLfo1: 0,
@@ -128,7 +128,7 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i] = {
-				arg freqRatio = 1, sampleRate, gate = 0, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame, crossfadeDuration;
+				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame, crossfadeDuration;
 
 				var signal, crossfadeSignal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
 				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, loopChanged, loopChangedEnv, crossfadeControl, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration;
@@ -236,7 +236,7 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i + 2] = {
-				arg freqRatio = 1, sampleRate, gate = 0, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame;
+				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame;
 				var signal, rate, progress, loopEnabled, oneShotActive, duckDuration, startEndDuckControl;
 
 				startFrame = Latch.kr(startFrame, 1);
@@ -315,7 +315,7 @@ Engine_Timber : CroneEngine {
 
 			SynthDef(name, {
 
-				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, killDuration = 0.01, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
+				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, killDuration = 0.005, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, timeStretch, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
@@ -329,10 +329,8 @@ Engine_Timber : CroneEngine {
 				lfo1 = Line.kr(start: (lfo1Fade < 0), end: (lfo1Fade >= 0), dur: lfo1Fade.abs, mul: In.kr(lfos, 1));
 				lfo2 = Line.kr(start: (lfo2Fade < 0), end: (lfo2Fade >= 0), dur: lfo2Fade.abs, mul: In.kr(lfos, 2)[1]);
 
-				// Ignore gate for one shots
-				gate = gate.max(InRange.kr(playMode, 3, 3));
-
 				// Envelopes
+				gate = gate.max(InRange.kr(playMode, 3, 3)); // Ignore gate for one shots
 				killGate = killGate + Impulse.kr(0); // Make sure doneAction fires
 				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
@@ -342,16 +340,10 @@ Engine_Timber : CroneEngine {
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
 				freq = freq * detuneRatio * pitchBendRatio * pitchBendSampleRatio;
 				freq = (freq * freqModRatio).clip(20, i_nyquist);
-				freqRatio = (freq / originalFreq);
+				freqRatio = (freq / originalFreq) * freqMultiplier;
 
 				// Player
-				signal = SynthDef.wrap(players[i], [\kr, \kr, \kr, \kr], [Select.kr(timeStretch, [freqRatio * freqMultiplier, freqMultiplier]), sampleRate, gate, playMode]);
-
-				// Pitchshift
-				signal = Select.ar(timeStretch, [
-					signal,
-					PitchShift.ar(in: signal, windowSize: 0.1, pitchRatio: freqRatio * freqMultiplier.reciprocal, pitchDispersion: 0.0, timeDispersion: 0.01)
-				]);
+				signal = SynthDef.wrap(players[i], [\kr, \kr, \kr, \kr], [freqRatio, sampleRate, gate, playMode]);
 
 				// Downsample and bit reduction
 				if(i > 1, { // Streaming
@@ -756,32 +748,50 @@ Engine_Timber : CroneEngine {
 
 	addVoice {
 		arg voiceId, sampleId, freq, pitchBendRatio, vel;
-		var defName, sample = samples[sampleId], streamBuffer;
+		var voiceToRemove, defName, sample = samples[sampleId], streamBuffer;
 
 		if(sample.numFrames > 0, {
 
-			if(sample.streaming == 0, {
-
-				if(sample.buffer.numChannels == 1, {
-					defName = \monoBufferVoice;
-				}, {
-					defName = \stereoBufferVoice;
+			// Remove a voice if there are too many
+			if(voiceList.size >= maxVoices, {
+				voiceToRemove = voiceList.detect{arg v; v.gate == 0};
+				if(voiceToRemove.isNil, {
+					voiceToRemove = voiceList.detect{arg item; item.id == voiceId};
 				});
+				if(voiceToRemove.isNil, {
+					voiceToRemove = voiceList.last;
+				});
+			});
+			if(voiceToRemove.notNil, {
+				voiceToRemove.theSynth.set(\killGate, 0); // TODO Synths seem to take a while to actually free
+				voiceList.remove(voiceToRemove);
+			});
 
-				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel);
+			// Don't add voices if we're too far over?! TODO This seems like a weird logic but it prevents rapid notes pushing us over perf limits??
+			if(numActiveVoices < (maxVoices + 1), {
 
-			}, {
-				Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
-					arg streamBuffer;
-					if(streamBuffer.numChannels == 1, {
-						defName = \monoStreamingVoice;
+				if(sample.streaming == 0, {
+					if(sample.buffer.numChannels == 1, {
+						defName = \monoBufferVoice;
 					}, {
-						defName = \stereoStreamingVoice;
+						defName = \stereoBufferVoice;
 					});
+					this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel);
 
-					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel);
-					0;
+				}, {
+					Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
+						arg streamBuffer;
+						if(streamBuffer.numChannels == 1, {
+							defName = \monoStreamingVoice;
+						}, {
+							defName = \stereoStreamingVoice;
+						});
+						this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel);
+						0;
+					});
 				});
+			}, {
+				("! Skipped adding, numActiveVoices" + numActiveVoices).postln;
 			});
 		});
 	}
@@ -867,11 +877,15 @@ Engine_Timber : CroneEngine {
 				});
 			});
 			voiceList.remove(newVoice);
+			numActiveVoices = numActiveVoices - 1;
 
+			("Freed, numActiveVoices" + numActiveVoices).postln;
 			scriptAddress.sendBundle(0, ['/engineVoiceFreed', sampleId, voiceId]);
 
 		}), gate: 1);
 		voiceList.addFirst(newVoice);
+		numActiveVoices = numActiveVoices + 1;
+		("Added, numActiveVoices" + numActiveVoices).postln;
 
 		scriptAddress.sendBundle(0, ['/enginePlayPosition', sampleId, voiceId, sample.startFrame / sample.numFrames]);
 		// });
@@ -883,9 +897,10 @@ Engine_Timber : CroneEngine {
 
 	setArgOnVoice {
 		arg voiceId, name, value;
-		var voice = voiceList.detect{arg v; v.id == voiceId};
-		if(voice.notNil, {
-			voice.theSynth.set(name, value);
+		var voices = voiceList.select{arg v; v.id == voiceId};
+		voices.do({
+			arg v;
+			v.theSynth.set(name, value);
 		});
 	}
 
@@ -901,7 +916,7 @@ Engine_Timber : CroneEngine {
 		arg sampleId, name, value;
 		var voices = voiceList.select{arg v; v.sampleId == sampleId};
 		voices.do({
-			arg v, i;
+			arg v;
 			v.theSynth.set(name, value);
 		});
 	}
@@ -917,35 +932,21 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\noteOn, "iiff", {
 			arg msg;
 			var voiceId = msg[1], sampleId = msg[2], freq = msg[3], vel = msg[4],
-			voiceToRemove, sample = samples[sampleId];
+			sample = samples[sampleId];
 
 			if(sample.notNil, {
-
-				// Remove voice if ID matches or there are too many
-				voiceToRemove = voiceList.detect{arg item; item.id == voiceId};
-				if(voiceToRemove.isNil && (voiceList.size >= maxVoices), {
-					voiceToRemove = voiceList.detect{arg v; v.gate == 0};
-					if(voiceToRemove.isNil, {
-						voiceToRemove = voiceList.last;
-					});
-				});
-				if(voiceToRemove.notNil, {
-					voiceToRemove.theSynth.set(\killGate, 0);
-					voiceList.remove(voiceToRemove);
-				});
-
 				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
-
 			});
 		});
 
 		// noteOff(id)
 		this.addCommand(\noteOff, "i", {
 			arg msg;
-			var voice = voiceList.detect{arg v; v.id == msg[1]};
-			if(voice.notNil, {
-				voice.theSynth.set(\gate, 0);
-				voice.gate = 0;
+			var voices = voiceList.select{arg v; v.id == msg[1]};
+			voices.do({
+				arg v;
+				v.theSynth.set(\gate, 0);
+				v.gate = 0;
 			});
 		});
 
@@ -959,10 +960,11 @@ Engine_Timber : CroneEngine {
 		// noteKill(id)
 		this.addCommand(\noteKill, "i", {
 			arg msg;
-			var voice = voiceList.detect{arg v; v.id == msg[1]};
-			if(voice.notNil, {
-				voice.theSynth.set(\killGate, 0);
-				voiceList.remove(voice);
+			var voices = voiceList.select{arg v; v.id == msg[1]};
+			voices.do({
+				arg v;
+				v.theSynth.set(\killGate, 0);
+				voiceList.remove(v);
 			});
 		});
 
@@ -1104,11 +1106,6 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\freqModEnv, "if", {
 			arg msg;
 			this.setArgOnSample(msg[1], \freqModEnv, msg[2]);
-		});
-
-		this.addCommand(\timeStretch, "ii", {
-			arg msg;
-			this.setArgOnSample(msg[1], \timeStretch, msg[2]);
 		});
 
 		this.addCommand(\freqMultiplier, "if", {
