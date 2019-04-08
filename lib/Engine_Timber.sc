@@ -316,7 +316,7 @@ Engine_Timber : CroneEngine {
 			SynthDef(name, {
 
 				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, killDuration = 0.005, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
-				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, timeStretch, freqMultiplier,
+				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
 				filterFreq, filterReso, filterType, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv,
@@ -832,7 +832,6 @@ Engine_Timber : CroneEngine {
 			\lfo1Fade, sample.lfo1Fade,
 			\lfo2Fade, sample.lfo2Fade,
 
-			\timeStretch, sample.timeStretch,
 			\freqMultiplier, sample.freqMultiplier,
 
 			\freqModLfo1, sample.freqModLfo1,
