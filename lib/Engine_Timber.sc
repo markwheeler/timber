@@ -315,7 +315,7 @@ Engine_Timber : CroneEngine {
 
 			SynthDef(name, {
 
-				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, killDuration = 0.005, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
+				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
@@ -332,7 +332,7 @@ Engine_Timber : CroneEngine {
 				// Envelopes
 				gate = gate.max(InRange.kr(playMode, 3, 3)); // Ignore gate for one shots
 				killGate = killGate + Impulse.kr(0); // Make sure doneAction fires
-				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
+				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, 0.006), gate: killGate, doneAction: Done.freeSelf);
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
 
@@ -430,7 +430,7 @@ Engine_Timber : CroneEngine {
 		activeVoices = voiceList.select{arg v; v.sampleId == sampleId};
 		activeVoices.do({
 			arg v;
-			v.theSynth.set(\killGate, 0, \killDuration, 0);
+			v.theSynth.set(\killGate, -1);
 		});
 
 		if(samples[sampleId].buffer.notNil, {
@@ -752,24 +752,20 @@ Engine_Timber : CroneEngine {
 
 		if(sample.numFrames > 0, {
 
-			// Remove a voice if there are too many
-			if(voiceList.size >= maxVoices, {
+			// Remove a voice if ID matches or there are too many
+			voiceToRemove = voiceList.detect{arg v; v.id == voiceId};
+			if(voiceToRemove.isNil && (voiceList.size >= maxVoices), {
 				voiceToRemove = voiceList.detect{arg v; v.gate == 0};
-				if(voiceToRemove.isNil, {
-					voiceToRemove = voiceList.detect{arg item; item.id == voiceId};
-				});
 				if(voiceToRemove.isNil, {
 					voiceToRemove = voiceList.last;
 				});
 			});
 			if(voiceToRemove.notNil, {
-				voiceToRemove.theSynth.set(\killGate, 0); // TODO Synths seem to take a while to actually free
+				voiceToRemove.theSynth.set(\killGate, 0);
 				voiceList.remove(voiceToRemove);
 			});
 
-			// Don't add voices if we're too far over?! TODO This seems like a weird logic but it prevents rapid notes pushing us over perf limits??
 			if(numActiveVoices < (maxVoices + 1), {
-
 				if(sample.streaming == 0, {
 					if(sample.buffer.numChannels == 1, {
 						defName = \monoBufferVoice;
@@ -790,8 +786,6 @@ Engine_Timber : CroneEngine {
 						0;
 					});
 				});
-			}, {
-				("! Skipped adding, numActiveVoices" + numActiveVoices).postln;
 			});
 		});
 	}
@@ -878,13 +872,11 @@ Engine_Timber : CroneEngine {
 			voiceList.remove(newVoice);
 			numActiveVoices = numActiveVoices - 1;
 
-			("Freed, numActiveVoices" + numActiveVoices).postln;
 			scriptAddress.sendBundle(0, ['/engineVoiceFreed', sampleId, voiceId]);
 
 		}), gate: 1);
 		voiceList.addFirst(newVoice);
 		numActiveVoices = numActiveVoices + 1;
-		("Added, numActiveVoices" + numActiveVoices).postln;
 
 		scriptAddress.sendBundle(0, ['/enginePlayPosition', sampleId, voiceId, sample.startFrame / sample.numFrames]);
 		// });
@@ -896,10 +888,9 @@ Engine_Timber : CroneEngine {
 
 	setArgOnVoice {
 		arg voiceId, name, value;
-		var voices = voiceList.select{arg v; v.id == voiceId};
-		voices.do({
-			arg v;
-			v.theSynth.set(name, value);
+		var voice = voiceList.detect{arg v; v.id == voiceId};
+		if(voice.notNil, {
+			voice.theSynth.set(name, value);
 		});
 	}
 
@@ -941,11 +932,10 @@ Engine_Timber : CroneEngine {
 		// noteOff(id)
 		this.addCommand(\noteOff, "i", {
 			arg msg;
-			var voices = voiceList.select{arg v; v.id == msg[1]};
-			voices.do({
-				arg v;
-				v.theSynth.set(\gate, 0);
-				v.gate = 0;
+			var voice = voiceList.detect{arg v; v.id == msg[1]};
+			if(voice.notNil, {
+				voice.theSynth.set(\gate, 0);
+				voice.gate = 0;
 			});
 		});
 
@@ -959,11 +949,10 @@ Engine_Timber : CroneEngine {
 		// noteKill(id)
 		this.addCommand(\noteKill, "i", {
 			arg msg;
-			var voices = voiceList.select{arg v; v.id == msg[1]};
-			voices.do({
-				arg v;
-				v.theSynth.set(\killGate, 0);
-				voiceList.remove(v);
+			var voice = voiceList.detect{arg v; v.id == msg[1]};
+			if(voice.notNil, {
+				voice.theSynth.set(\killGate, 0);
+				voiceList.remove(voice);
 			});
 		});
 
