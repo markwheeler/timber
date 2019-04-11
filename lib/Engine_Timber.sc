@@ -4,7 +4,8 @@
 
 Engine_Timber : CroneEngine {
 
-	var maxVoices = 5;
+	var maxVoices = 7; //5
+	var reserveVoices = 3;
 	var numActiveVoices = 0;
 	var maxSamples = 256;
 	var waveformDisplayRes = 60;
@@ -66,7 +67,6 @@ Engine_Timber : CroneEngine {
 			playMode: 0,
 			loopStartFrame: 0,
 			loopEndFrame: 0,
-			crossfadeDuration: 0.01,
 
 			freqMultiplier: 1,
 
@@ -128,10 +128,10 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i] = {
-				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame, crossfadeDuration;
+				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame;
 
-				var signal, crossfadeSignal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
-				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, loopChanged, loopChangedEnv, crossfadeControl, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration;
+				var signal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
+				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration;
 
 				latchedStartFrame = Latch.kr(startFrame, 1);
 				firstFrame = startFrame.min(endFrame);
@@ -177,27 +177,6 @@ Engine_Timber : CroneEngine {
 
 				signal = BufRd.ar(numChannels: i + 1, bufnum: bufnum, phase: phase, interpolation: 4);
 
-
-				// Crossfades and de-clicking
-
-				// If loop just moved then generate an env
-				loopChanged = (Changed.kr(loopStartFrame) + Changed.kr(loopEndFrame)) * loopEnabled;
-				loopChangedEnv = EnvGen.ar(Env.linen(0, 0.01, 0.2), loopChanged, -1, 1);
-
-				// Crossfade
-				crossfadeDuration = crossfadeDuration * BufSampleRate.ir(bufnum); // Secs to frames, sample time
-				offsetPhase = phase + (loopDuration * (direction * -1));
-
-				crossfadeSignal = BufRd.ar(numChannels: i + 1, bufnum: bufnum, phase: offsetPhase, interpolation: 4);
-
-				crossfadeControl = Select.ar(direction > 0, [
-					phase.linlin(loopStartFrame, loopEndFrame.min(loopStartFrame + crossfadeDuration), 1, 0),
-					phase.linlin(loopStartFrame.max(loopEndFrame - crossfadeDuration), loopEndFrame, 0, 1)
-				]) * shouldLoop;
-
-				// Only apply crossfade if loop is static
-				signal = SelectX.ar(crossfadeControl * loopChangedEnv, [signal, crossfadeSignal]);
-
 				// Duck across loop points and near start/end to avoid clicks (3ms, playback time)
 				duckDuration = 0.003 * BufSampleRate.ir(bufnum) * (freqRatio * BufRateScale.ir(bufnum)).reciprocal;
 
@@ -211,9 +190,6 @@ Engine_Timber : CroneEngine {
 					K2A.ar(1),
 					phase.linlin(loopStartFrame, loopStartFrame + duckDuration, 0, 1) * phase.linlin(loopEndFrame - duckDuration, loopEndFrame, 1, 0)
 				]);
-
-				// Only apply loop ducks when loop position is changing or crossfade is < 5ms
-				loopDuckControl = loopDuckControl.linlin(0, 1, loopChangedEnv.min(crossfadeDuration > (0.005 * BufSampleRate.ir(bufnum))), 1);
 				signal = signal * loopDuckControl;
 
 				// Start (these also mute one-shots)
@@ -493,7 +469,6 @@ Engine_Timber : CroneEngine {
 						sample.endFrame = file.numFrames;
 						sample.loopStartFrame = 0;
 						sample.loopEndFrame = file.numFrames;
-						sample.crossfadeDuration = 0.01;
 
 						// If file is over the buffer-addressable number of frames (~5.8mins at 48kHz) then prepare it for streaming instead.
 						// Streaming has fairly limited options for playback (no looping etc).
@@ -760,12 +735,14 @@ Engine_Timber : CroneEngine {
 					voiceToRemove = voiceList.last;
 				});
 			});
+			context.server.makeBundle(nil, {
 			if(voiceToRemove.notNil, {
-				voiceToRemove.theSynth.set(\killGate, 0);
+				voiceToRemove.theSynth.free;
+				// voiceToRemove.theSynth.set(\killGate, 0);
 				voiceList.remove(voiceToRemove);
 			});
 
-			if(numActiveVoices < (maxVoices + 1), {
+			// if(numActiveVoices < (maxVoices + reserveVoices), {
 				if(sample.streaming == 0, {
 					if(sample.buffer.numChannels == 1, {
 						defName = \monoBufferVoice;
@@ -786,6 +763,9 @@ Engine_Timber : CroneEngine {
 						0;
 					});
 				});
+/*			}, {
+				("Skipped. Active:" + numActiveVoices).postln;
+			});*/
 			});
 		});
 	}
@@ -820,7 +800,6 @@ Engine_Timber : CroneEngine {
 			\playMode, sample.playMode,
 			\loopStartFrame, sample.loopStartFrame,
 			\loopEndFrame, sample.loopEndFrame,
-			\crossfadeDuration, sample.crossfadeDuration,
 
 			\lfos, lfoBus,
 			\lfo1Fade, sample.lfo1Fade,
@@ -1064,11 +1043,6 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\loopEndFrame, "ii", {
 			arg msg;
 			this.setArgOnSample(msg[1], \loopEndFrame, msg[2]);
-		});
-
-		this.addCommand(\crossfadeDuration, "if", {
-			arg msg;
-			this.setArgOnSample(msg[1], \crossfadeDuration, msg[2]);
 		});
 
 		this.addCommand(\lfo1Fade, "if", {
