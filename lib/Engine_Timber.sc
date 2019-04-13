@@ -300,6 +300,14 @@ Engine_Timber : CroneEngine {
 				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
 				killEnvelope, ampEnvelope, modEnvelope, lfo1, lfo2, i_controlLag = 0.005;
 
+				// Lag inputs
+				detuneRatio = Lag.kr(detuneRatio * pitchBendRatio * pitchBendSampleRatio, i_controlLag);
+				pressure = Lag.kr(pressure + pressureSample, i_controlLag);
+				amp = Lag.kr(amp, i_controlLag);
+				filterFreq = Lag.kr(filterFreq, i_controlLag);
+				filterReso = Lag.kr(filterReso, i_controlLag);
+				pan = Lag.kr(pan, i_controlLag);
+
 				// LFOs
 				lfo1 = Line.kr(start: (lfo1Fade < 0), end: (lfo1Fade >= 0), dur: lfo1Fade.abs, mul: In.kr(lfos, 1));
 				lfo2 = Line.kr(start: (lfo2Fade < 0), end: (lfo2Fade >= 0), dur: lfo2Fade.abs, mul: In.kr(lfos, 2)[1]);
@@ -313,7 +321,7 @@ Engine_Timber : CroneEngine {
 
 				// Freq modulation
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
-				freq = freq * detuneRatio * pitchBendRatio * pitchBendSampleRatio;
+				freq = freq * detuneRatio;
 				freq = (freq * freqModRatio).clip(20, i_nyquist);
 				freqRatio = (freq / originalFreq) * freqMultiplier;
 
@@ -339,7 +347,7 @@ Engine_Timber : CroneEngine {
 				filterFreqRatio = filterFreqRatio / i_cFreq;
 				filterFreq = filterFreq * filterFreqRatio;
 				filterFreq = filterFreq * ((48 * lfo1 * filterFreqModLfo1) + (48 * lfo2 * filterFreqModLfo2) + (96 * modEnvelope * filterFreqModEnv)).midiratio;
-				filterFreq = filterFreq * (1 + (0.25 * (pressure + pressureSample)));
+				filterFreq = filterFreq * (1 + (0.25 * pressure));
 				filterFreq = filterFreq.clip(20, 20000);
 				filterReso = filterReso.linlin(0, 1, 1, 0.02);
 				signal = Select.ar(filterType, [
@@ -353,7 +361,7 @@ Engine_Timber : CroneEngine {
 
 				// Amp
 				signal = signal * lfo1.range(1 - ampModLfo1, 1) * lfo2.range(1 - ampModLfo2, 1) * ampEnvelope * killEnvelope * vel;
-				signal = tanh(signal * amp.dbamp * (1 + pressure + pressureSample)).softclip;
+				signal = tanh(signal * amp.dbamp * (1 + pressure)).softclip;
 
 				Out.ar(out, signal);
 			}).add;
