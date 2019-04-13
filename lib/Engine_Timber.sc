@@ -4,10 +4,9 @@
 
 Engine_Timber : CroneEngine {
 
-	var maxVoices = 7; //5
-	var reserveVoices = 3;
-	var numActiveVoices = 0;
+	var maxVoices = 7;
 	var maxSamples = 256;
+	var killDuration = 0.003;
 	var waveformDisplayRes = 60;
 
 	var voiceGroup;
@@ -308,7 +307,7 @@ Engine_Timber : CroneEngine {
 				// Envelopes
 				gate = gate.max(InRange.kr(playMode, 3, 3)); // Ignore gate for one shots
 				killGate = killGate + Impulse.kr(0); // Make sure doneAction fires
-				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, 0.006), gate: killGate, doneAction: Done.freeSelf);
+				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
 
@@ -721,51 +720,59 @@ Engine_Timber : CroneEngine {
 		scriptAddress.sendBundle(0, ['/engineWaveform', sampleId, offset, padding, waveform]);
 	}
 
+	assignVoice {
+		arg voiceId, sampleId, freq, pitchBendRatio, vel;
+		var voiceToRemove, killRoutine;
+
+		// Remove a voice if ID matches or there are too many
+		voiceToRemove = voiceList.detect{arg v; v.id == voiceId};
+		if(voiceToRemove.isNil && (voiceList.size >= maxVoices), {
+			voiceToRemove = voiceList.detect{arg v; v.gate == 0};
+			if(voiceToRemove.isNil, {
+				voiceToRemove = voiceList.last;
+			});
+		});
+
+		if(voiceToRemove.notNil, {
+			voiceToRemove.theSynth.set(\killGate, 0);
+			voiceList.remove(voiceToRemove);
+
+			// Delay adding a new voice until after killDuration
+			killRoutine = Routine {
+				killDuration.wait;
+				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
+				killRoutine.free;
+			}.play;
+
+		}, {
+			this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
+		});
+	}
+
 	addVoice {
 		arg voiceId, sampleId, freq, pitchBendRatio, vel;
-		var voiceToRemove, defName, sample = samples[sampleId], streamBuffer;
+		var defName, sample = samples[sampleId], streamBuffer;
 
 		if(sample.numFrames > 0, {
-
-			// Remove a voice if ID matches or there are too many
-			voiceToRemove = voiceList.detect{arg v; v.id == voiceId};
-			if(voiceToRemove.isNil && (voiceList.size >= maxVoices), {
-				voiceToRemove = voiceList.detect{arg v; v.gate == 0};
-				if(voiceToRemove.isNil, {
-					voiceToRemove = voiceList.last;
-				});
-			});
-			context.server.makeBundle(nil, {
-			if(voiceToRemove.notNil, {
-				voiceToRemove.theSynth.free;
-				// voiceToRemove.theSynth.set(\killGate, 0);
-				voiceList.remove(voiceToRemove);
-			});
-
-			// if(numActiveVoices < (maxVoices + reserveVoices), {
-				if(sample.streaming == 0, {
-					if(sample.buffer.numChannels == 1, {
-						defName = \monoBufferVoice;
-					}, {
-						defName = \stereoBufferVoice;
-					});
-					this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel);
-
+			if(sample.streaming == 0, {
+				if(sample.buffer.numChannels == 1, {
+					defName = \monoBufferVoice;
 				}, {
-					Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
-						arg streamBuffer;
-						if(streamBuffer.numChannels == 1, {
-							defName = \monoStreamingVoice;
-						}, {
-							defName = \stereoStreamingVoice;
-						});
-						this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel);
-						0;
-					});
+					defName = \stereoBufferVoice;
 				});
-/*			}, {
-				("Skipped. Active:" + numActiveVoices).postln;
-			});*/
+				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel);
+
+			}, {
+				Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
+					arg streamBuffer;
+					if(streamBuffer.numChannels == 1, {
+						defName = \monoStreamingVoice;
+					}, {
+						defName = \stereoStreamingVoice;
+					});
+					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel);
+					0;
+				});
 			});
 		});
 	}
@@ -849,13 +856,11 @@ Engine_Timber : CroneEngine {
 				});
 			});
 			voiceList.remove(newVoice);
-			numActiveVoices = numActiveVoices - 1;
 
 			scriptAddress.sendBundle(0, ['/engineVoiceFreed', sampleId, voiceId]);
 
 		}), gate: 1);
 		voiceList.addFirst(newVoice);
-		numActiveVoices = numActiveVoices + 1;
 
 		scriptAddress.sendBundle(0, ['/enginePlayPosition', sampleId, voiceId, sample.startFrame / sample.numFrames]);
 		// });
@@ -904,7 +909,7 @@ Engine_Timber : CroneEngine {
 			sample = samples[sampleId];
 
 			if(sample.notNil, {
-				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
+				this.assignVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
 			});
 		});
 
@@ -915,6 +920,9 @@ Engine_Timber : CroneEngine {
 			if(voice.notNil, {
 				voice.theSynth.set(\gate, 0);
 				voice.gate = 0;
+				// Move voice to end so that oldest gate-off voices are found first when stealing
+				voiceList.remove(voice);
+				voiceList.add(voice);
 			});
 		});
 
