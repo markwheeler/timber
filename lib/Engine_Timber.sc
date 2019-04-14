@@ -77,6 +77,7 @@ Engine_Timber : CroneEngine {
 			ampDecay: 1,
 			ampSustain: 1,
 			ampRelease: 0.003,
+
 			modAttack: 1,
 			modDecay: 2,
 			modSustain: 0.65,
@@ -92,6 +93,8 @@ Engine_Timber : CroneEngine {
 			filterFreqModLfo1: 0,
 			filterFreqModLfo2: 0,
 			filterFreqModEnv: 0,
+			filterFreqModVel: 0,
+			filterFreqModPressure: 0,
 
 			pan: 0,
 			panModLfo1: 0,
@@ -294,7 +297,7 @@ Engine_Timber : CroneEngine {
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
-				filterFreq, filterReso, filterType, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv,
+				filterFreq, filterReso, filterType, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv, filterFreqModVel, filterFreqModPressure,
 				pan, panModLfo1, panModLfo2, panModEnv, ampModLfo1, ampModLfo2;
 
 				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
@@ -346,8 +349,7 @@ Engine_Timber : CroneEngine {
 				]);
 				filterFreqRatio = filterFreqRatio / i_cFreq;
 				filterFreq = filterFreq * filterFreqRatio;
-				filterFreq = filterFreq * ((48 * lfo1 * filterFreqModLfo1) + (48 * lfo2 * filterFreqModLfo2) + (96 * modEnvelope * filterFreqModEnv)).midiratio;
-				filterFreq = filterFreq * (1 + (0.25 * pressure));
+				filterFreq = filterFreq * ((48 * lfo1 * filterFreqModLfo1) + (48 * lfo2 * filterFreqModLfo2) + (96 * modEnvelope * filterFreqModEnv) + (48 * vel * filterFreqModVel) + (48 * pressure * filterFreqModPressure)).midiratio;
 				filterFreq = filterFreq.clip(20, 20000);
 				filterReso = filterReso.linlin(0, 1, 1, 0.02);
 				signal = Select.ar(filterType, [
@@ -360,7 +362,7 @@ Engine_Timber : CroneEngine {
 				signal = Splay.ar(inArray: signal, spread: 1 - pan.abs, center: pan);
 
 				// Amp
-				signal = signal * lfo1.range(1 - ampModLfo1, 1) * lfo2.range(1 - ampModLfo2, 1) * ampEnvelope * killEnvelope * vel;
+				signal = signal * lfo1.range(1 - ampModLfo1, 1) * lfo2.range(1 - ampModLfo2, 1) * ampEnvelope * killEnvelope * vel.linlin(0, 1, 0.1, 1);
 				signal = tanh(signal * amp.dbamp * (1 + pressure)).softclip;
 
 				Out.ar(out, signal);
@@ -377,7 +379,7 @@ Engine_Timber : CroneEngine {
 			signal = In.ar(in, 2);
 
 			// Compression etc
-			signal = CompanderD.ar(in: signal, thresh: 0.7, slopeBelow: 1, slopeAbove: 0.33, clampTime: 0.008, relaxTime: 0.25);
+			signal = CompanderD.ar(in: signal, thresh: 0.7, slopeBelow: 1, slopeAbove: 0.4, clampTime: 0.008, relaxTime: 0.2);
 			signal = tanh(signal).softclip;
 
 			Out.ar(out, signal);
@@ -730,7 +732,7 @@ Engine_Timber : CroneEngine {
 
 	assignVoice {
 		arg voiceId, sampleId, freq, pitchBendRatio, vel;
-		var voiceToRemove, killRoutine;
+		var voiceToRemove;
 
 		// Remove a voice if ID matches or there are too many
 		voiceToRemove = voiceList.detect{arg v; v.id == voiceId};
@@ -742,24 +744,26 @@ Engine_Timber : CroneEngine {
 		});
 
 		if(voiceToRemove.notNil, {
-			voiceToRemove.theSynth.set(\killGate, 0);
-			voiceList.remove(voiceToRemove);
-
-			// Delay adding a new voice until after killDuration
-			killRoutine = Routine {
-				killDuration.wait;
-				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
-				killRoutine.free;
-			}.play;
-
+			if(voiceToRemove.startRoutine.notNil, {
+				voiceToRemove.startRoutine.stop;
+				voiceToRemove.startRoutine.free;
+				voiceList.remove(voiceToRemove);
+				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel, false);
+			}, {
+				voiceToRemove.theSynth.set(\killGate, 0);
+				voiceList.remove(voiceToRemove);
+				this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel, true);
+			});
 		}, {
-			this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
+			this.addVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel, false);
 		});
 	}
 
 	addVoice {
-		arg voiceId, sampleId, freq, pitchBendRatio, vel;
-		var defName, sample = samples[sampleId], streamBuffer;
+		arg voiceId, sampleId, freq, pitchBendRatio, vel, delayStart;
+		var defName, sample = samples[sampleId], streamBuffer, delay = 0, cueSecs;
+
+		if(delayStart, { delay = killDuration; });
 
 		if(sample.numFrames > 0, {
 			if(sample.streaming == 0, {
@@ -768,9 +772,10 @@ Engine_Timber : CroneEngine {
 				}, {
 					defName = \stereoBufferVoice;
 				});
-				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel);
+				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel, delay);
 
 			}, {
+				cueSecs = Date.getDate.rawSeconds;
 				Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
 					arg streamBuffer;
 					if(streamBuffer.numChannels == 1, {
@@ -778,7 +783,8 @@ Engine_Timber : CroneEngine {
 					}, {
 						defName = \stereoStreamingVoice;
 					});
-					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel);
+					delay = (delay - (Date.getDate.rawSeconds - cueSecs)).max(0);
+					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel, delay);
 					0;
 				});
 			});
@@ -786,91 +792,106 @@ Engine_Timber : CroneEngine {
 	}
 
 	addSynth {
-		arg defName, voiceId, sampleId, buffer, freq, pitchBendRatio, vel;
+		arg defName, voiceId, sampleId, buffer, freq, pitchBendRatio, vel, delay;
 		var newVoice, sample = samples[sampleId];
 
 		// TODO sometimes makeBundle causes "FAILURE IN SERVER /s_get Node 9 not found" error?!
 		// context.server.makeBundle(nil, {
-		newVoice = (id: voiceId, sampleId: sampleId, theSynth: Synth.new(defName: defName, args: [
-			\out, mixerBus,
-			\bufnum, buffer.bufnum,
 
-			\voiceId, voiceId,
-			\sampleId, sampleId,
+		newVoice = (id: voiceId, sampleId: sampleId, gate: 1);
 
-			\sampleRate, sample.sampleRate,
-			\numFrames, sample.numFrames,
-			\originalFreq, sample.originalFreq,
-			\freq, freq,
-			\detuneRatio, (sample.detuneCents / 100).midiratio,
-			\pitchBendRatio, pitchBendRatio,
-			\pitchBendSampleRatio, sample.pitchBendRatio,
-			\gate, 1,
-			\vel, vel.linlin(0, 1, 0.2, 1),
-			\pressure, pressureAll,
-			\pressureSample, sample.pressure,
+		// Delay adding a new synth until after killDuration if need be
+		newVoice.startRoutine = Routine {
+			delay.wait;
 
-			\startFrame, sample.startFrame,
-			\endFrame, sample.endFrame,
-			\playMode, sample.playMode,
-			\loopStartFrame, sample.loopStartFrame,
-			\loopEndFrame, sample.loopEndFrame,
+			newVoice.theSynth = Synth.new(defName: defName, args: [
+				\out, mixerBus,
+				\bufnum, buffer.bufnum,
 
-			\lfos, lfoBus,
-			\lfo1Fade, sample.lfo1Fade,
-			\lfo2Fade, sample.lfo2Fade,
+				\voiceId, voiceId,
+				\sampleId, sampleId,
 
-			\freqMultiplier, sample.freqMultiplier,
+				\sampleRate, sample.sampleRate,
+				\numFrames, sample.numFrames,
+				\originalFreq, sample.originalFreq,
+				\freq, freq,
+				\detuneRatio, (sample.detuneCents / 100).midiratio,
+				\pitchBendRatio, pitchBendRatio,
+				\pitchBendSampleRatio, sample.pitchBendRatio,
+				\gate, 1,
+				\vel, vel,
+				\pressure, pressureAll,
+				\pressureSample, sample.pressure,
 
-			\freqModLfo1, sample.freqModLfo1,
-			\freqModLfo2, sample.freqModLfo2,
-			\freqModEnv, sample.freqModEnv,
+				\startFrame, sample.startFrame,
+				\endFrame, sample.endFrame,
+				\playMode, sample.playMode,
+				\loopStartFrame, sample.loopStartFrame,
+				\loopEndFrame, sample.loopEndFrame,
 
-			\ampAttack, sample.ampAttack,
-			\ampDecay, sample.ampDecay,
-			\ampSustain, sample.ampSustain,
-			\ampRelease, sample.ampRelease,
-			\modAttack, sample.modAttack,
-			\modDecay, sample.modDecay,
-			\modSustain, sample.modSustain,
-			\modRelease, sample.modRelease,
+				\lfos, lfoBus,
+				\lfo1Fade, sample.lfo1Fade,
+				\lfo2Fade, sample.lfo2Fade,
 
-			\downSampleTo, sample.downSampleTo,
-			\bitDepth, sample.bitDepth,
+				\freqMultiplier, sample.freqMultiplier,
 
-			\filterFreq, sample.filterFreq,
-			\filterReso, sample.filterReso,
-			\filterType, sample.filterType,
-			\filterTracking, sample.filterTracking,
-			\filterFreqModLfo1, sample.filterFreqModLfo1,
-			\filterFreqModLfo2, sample.filterFreqModLfo2,
-			\filterFreqModEnv, sample.filterFreqModEnv,
+				\freqModLfo1, sample.freqModLfo1,
+				\freqModLfo2, sample.freqModLfo2,
+				\freqModEnv, sample.freqModEnv,
 
-			\pan, sample.pan,
-			\panModLfo1, sample.panModLfo1,
-			\panModLfo2, sample.panModLfo2,
-			\panModEnv, sample.panModEnv,
+				\ampAttack, sample.ampAttack,
+				\ampDecay, sample.ampDecay,
+				\ampSustain, sample.ampSustain,
+				\ampRelease, sample.ampRelease,
+				\modAttack, sample.modAttack,
+				\modDecay, sample.modDecay,
+				\modSustain, sample.modSustain,
+				\modRelease, sample.modRelease,
 
-			\amp, sample.amp,
-			\ampModLfo1, sample.ampModLfo1,
-			\ampModLfo2, sample.ampModLfo2,
+				\downSampleTo, sample.downSampleTo,
+				\bitDepth, sample.bitDepth,
 
-		], target: voiceGroup).onFree({
+				\filterFreq, sample.filterFreq,
+				\filterReso, sample.filterReso,
+				\filterType, sample.filterType,
+				\filterTracking, sample.filterTracking,
+				\filterFreqModLfo1, sample.filterFreqModLfo1,
+				\filterFreqModLfo2, sample.filterFreqModLfo2,
+				\filterFreqModEnv, sample.filterFreqModEnv,
+				\filterFreqModVel, sample.filterFreqModVel,
+				\filterFreqModPressure, sample.filterFreqModPressure,
 
-			if(sample.streaming == 1, {
-				if(buffer.notNil, {
-					buffer.close;
-					buffer.free;
+				\pan, sample.pan,
+				\panModLfo1, sample.panModLfo1,
+				\panModLfo2, sample.panModLfo2,
+				\panModEnv, sample.panModEnv,
+
+				\amp, sample.amp,
+				\ampModLfo1, sample.ampModLfo1,
+				\ampModLfo2, sample.ampModLfo2,
+
+			], target: voiceGroup).onFree({
+
+				if(sample.streaming == 1, {
+					if(buffer.notNil, {
+						buffer.close;
+						buffer.free;
+					});
 				});
+				voiceList.remove(newVoice);
+
+				scriptAddress.sendBundle(0, ['/engineVoiceFreed', sampleId, voiceId]);
+
 			});
-			voiceList.remove(newVoice);
 
-			scriptAddress.sendBundle(0, ['/engineVoiceFreed', sampleId, voiceId]);
+			scriptAddress.sendBundle(0, ['/enginePlayPosition', sampleId, voiceId, sample.startFrame / sample.numFrames]);
 
-		}), gate: 1);
+			newVoice.startRoutine.free;
+			newVoice.startRoutine = nil;
+		}.play;
+
 		voiceList.addFirst(newVoice);
 
-		scriptAddress.sendBundle(0, ['/enginePlayPosition', sampleId, voiceId, sample.startFrame / sample.numFrames]);
 		// });
 	}
 
@@ -926,19 +947,33 @@ Engine_Timber : CroneEngine {
 			arg msg;
 			var voice = voiceList.detect{arg v; v.id == msg[1]};
 			if(voice.notNil, {
-				voice.theSynth.set(\gate, 0);
-				voice.gate = 0;
-				// Move voice to end so that oldest gate-off voices are found first when stealing
-				voiceList.remove(voice);
-				voiceList.add(voice);
+				if(voice.startRoutine.notNil, {
+					voice.startRoutine.stop;
+					voice.startRoutine.free;
+					voiceList.remove(voice);
+				}, {
+					voice.theSynth.set(\gate, 0);
+					voice.gate = 0;
+					// Move voice to end so that oldest gate-off voices are found first when stealing
+					voiceList.remove(voice);
+					voiceList.add(voice);
+				});
 			});
 		});
 
 		// noteOffAll()
 		this.addCommand(\noteOffAll, "", {
 			arg msg;
+			voiceList.do({
+				arg v;
+				if(v.startRoutine.notNil, {
+					v.startRoutine.stop;
+					v.startRoutine.free;
+					voiceList.remove(v);
+				});
+				v.gate = 0;
+			});
 			voiceGroup.set(\gate, 0);
-			voiceList.do({ arg v; v.gate = 0; });
 		});
 
 		// noteKill(id)
@@ -946,7 +981,12 @@ Engine_Timber : CroneEngine {
 			arg msg;
 			var voice = voiceList.detect{arg v; v.id == msg[1]};
 			if(voice.notNil, {
-				voice.theSynth.set(\killGate, 0);
+				if(voice.startRoutine.notNil, {
+					voice.startRoutine.stop;
+					voice.startRoutine.free;
+				}, {
+					voice.theSynth.set(\killGate, 0);
+				});
 				voiceList.remove(voice);
 			});
 		});
@@ -954,6 +994,14 @@ Engine_Timber : CroneEngine {
 		// noteKillAll()
 		this.addCommand(\noteKillAll, "", {
 			arg msg;
+			voiceList.do({
+				arg v;
+				if(v.startRoutine.notNil, {
+					v.startRoutine.stop;
+					v.startRoutine.free;
+				});
+				v.gate = 0;
+			});
 			voiceGroup.set(\killGate, 0);
 			voiceList.clear;
 		});
@@ -1174,6 +1222,16 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\filterFreqModEnv, "if", {
 			arg msg;
 			this.setArgOnSample(msg[1], \filterFreqModEnv, msg[2]);
+		});
+
+		this.addCommand(\filterFreqModVel, "if", {
+			arg msg;
+			this.setArgOnSample(msg[1], \filterFreqModVel, msg[2]);
+		});
+
+		this.addCommand(\filterFreqModPressure, "if", {
+			arg msg;
+			this.setArgOnSample(msg[1], \filterFreqModPressure, msg[2]);
 		});
 
 		this.addCommand(\pan, "if", {

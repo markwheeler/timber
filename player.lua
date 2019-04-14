@@ -1,10 +1,9 @@
 -- Timber Player
+-- 1.0.0 @markeats
+-- llllllll.co/t/timber
 --
 -- Grid or MIDI keys
 -- play samples.
---
--- v1.0.0 Mark Eats
--- llllllll.co/t/xxxxxxxxxxx
 --
 -- E1 : Page
 -- K1+E1 : Sample slot

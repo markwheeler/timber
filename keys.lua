@@ -1,9 +1,17 @@
 -- Timber Keys
+-- 1.0.0 @markeats
+-- llllllll.co/t/timber
 --
--- Sample keyboard.
+-- Map samples across
+-- a MIDI keyboard.
 --
--- v1.0.0 Mark Eats
--- llllllll.co/t/xxxxxxxxxxx
+-- E1 : Page
+-- K1+E1 : Sample slot
+-- K1 (Hold) : Shift / Fine
+--
+-- K2 : Focus
+-- K3 : Action
+-- E2/3 : Params
 --
 
 function unrequire(name)
@@ -33,6 +41,7 @@ local amp_env_view
 local mod_env_view
 local lfos_view
 local mod_matrix_view
+local key_matrix_view
 
 local NUM_SAMPLES = 16
 local current_sample_id = 0
@@ -50,6 +59,7 @@ local function set_sample_id(id)
   mod_env_view:set_sample_id(current_sample_id)
   lfos_view:set_sample_id(current_sample_id)
   mod_matrix_view:set_sample_id(current_sample_id)
+  key_matrix_view:set_sample_id(current_sample_id)
 end
 
 local function note_on(voice_id, sample_id, freq, vel)
@@ -129,6 +139,8 @@ function enc(n, delta)
       lfos_view:enc(n, delta)
     elseif pages.index == 8 then
       mod_matrix_view:enc(n, delta)
+    elseif pages.index == 9 then
+      key_matrix_view:enc(n, delta)
     end
     
   end
@@ -164,6 +176,8 @@ function key(n, z)
       lfos_view:key(n, z)
     elseif pages.index == 8 then
       mod_matrix_view:key(n, z)
+    elseif pages.index == 9 then
+      key_matrix_view:key(n, z)
     end
   end
   
@@ -174,7 +188,10 @@ end
 local function midi_event(data)
   
   local msg = midi.to_msg(data)
-  local sample_id = msg.ch - 1
+  local sample_id
+  if msg.ch then
+    sample_id = msg.ch - 1
+  end
   local voice_id
   if msg.note then
     voice_id = (msg.ch - 1) * 128 + msg.note
@@ -188,7 +205,7 @@ local function midi_event(data)
   -- Note on
   elseif msg.type == "note_on" then
     note_on(voice_id, sample_id, MusicUtil.note_num_to_freq(msg.note), msg.vel / 127)
-    print("note on", msg.note, voice_id, sample_id)
+    print("note on", msg.note, msg.vel, voice_id, sample_id)
     
   -- Key pressure
   elseif msg.type == "key_pressure" then
@@ -319,6 +336,8 @@ function redraw()
     lfos_view:redraw()
   elseif pages.index == 8 then
     mod_matrix_view:redraw()
+  elseif pages.index == 9 then
+    key_matrix_view:redraw()
   end
   
   screen.update()
@@ -342,7 +361,7 @@ function init()
   midi_in_device = midi.connect(1)
   midi_in_device.event = midi_event
   
-  pages = UI.Pages.new(1, 8)
+  pages = UI.Pages.new(1, 9)
   
   -- Callbacks
   Timber.sample_changed_callback = function(id)
@@ -401,6 +420,7 @@ function init()
   mod_env_view = Timber.UI.ModEnv.new(current_sample_id)
   lfos_view = Timber.UI.Lfos.new(current_sample_id)
   mod_matrix_view = Timber.UI.ModMatrix.new(current_sample_id)
+  key_matrix_view = Timber.UI.KeyMatrix.new(current_sample_id)
   
   screen.aa(1)
   

@@ -227,7 +227,7 @@ function Timber.clear_samples(first, last)
     "freq_mod_lfo_1", "freq_mod_lfo_2", "freq_mod_env",
     "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release",
     "mod_env_attack", "mod_env_decay", "mod_env_sustain", "mod_env_release",
-    "filter_type", "filter_freq", "filter_resonance", "filter_tracking", "filter_freq_mod_lfo_1", "filter_freq_mod_lfo_2", "filter_freq_mod_env",
+    "filter_type", "filter_freq", "filter_resonance", "filter_tracking", "filter_freq_mod_lfo_1", "filter_freq_mod_lfo_2", "filter_freq_mod_env", "filter_freq_mod_vel", "filter_freq_mod_pressure",
     "pan", "pan_mod_lfo_1", "pan_mod_lfo_2", "pan_mod_env", "amp", "amp_mod_lfo_1", "amp_mod_lfo_2"
   }
   for _, v in pairs(extra_param_ids) do
@@ -487,7 +487,7 @@ end
 
 local function format_frame_number(sample_id)
   return function(param)
-    return util.round(param:get() / samples_meta[sample_id].sample_rate, 0.01) .. " s"
+    return Formatters.format_secs_raw(param:get() / samples_meta[sample_id].sample_rate)
   end
 end
 
@@ -623,97 +623,97 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
       end
     end
   end
-	
-	params:add_separator()
-	
-	params:add{type = "option", id = "play_mode_" .. id, name = "Play Mode", options = options.PLAY_MODE_BUFFER, default = options.PLAY_MODE_BUFFER_DEFAULT, action = function(value)
-	  engine.playMode(id, lookup_play_mode(id))
-	  waveform_last_edited = {id = id}
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "start_frame_" .. id, name = "Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
-	  set_marker(id, "start_frame_")
-	end}
-	params:add{type = "control", id = "end_frame_" .. id, name = "End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
-	  set_marker(id, "end_frame_")
-	end}
-	params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
-	  set_marker(id, "loop_start_frame_")
-	end}
-	params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
-	  set_marker(id, "loop_end_frame_")
-	end}
-	
-	params:add_separator()
-	
-	local scale_by_options
-	if include_beat_params then scale_by_options = options.SCALE_BY
+  
+  params:add_separator()
+  
+  params:add{type = "option", id = "play_mode_" .. id, name = "Play Mode", options = options.PLAY_MODE_BUFFER, default = options.PLAY_MODE_BUFFER_DEFAULT, action = function(value)
+    engine.playMode(id, lookup_play_mode(id))
+    waveform_last_edited = {id = id}
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "start_frame_" .. id, name = "Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
+    set_marker(id, "start_frame_")
+  end}
+  params:add{type = "control", id = "end_frame_" .. id, name = "End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
+    set_marker(id, "end_frame_")
+  end}
+  params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
+    set_marker(id, "loop_start_frame_")
+  end}
+  params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
+    set_marker(id, "loop_end_frame_")
+  end}
+  
+  params:add_separator()
+  
+  local scale_by_options
+  if include_beat_params then scale_by_options = options.SCALE_BY
   else scale_by_options = options.SCALE_BY_NO_BARS end
-	params:add{type = "option", id = "scale_by_" .. id, name = "Scale By", options = scale_by_options, default = 1, action = function(value)
-	  update_by_bars_options(id)
-	  update_freq_multiplier(id)
-	  Timber.views_changed_callback(id)
+  params:add{type = "option", id = "scale_by_" .. id, name = "Scale By", options = scale_by_options, default = 1, action = function(value)
+    update_by_bars_options(id)
+    update_freq_multiplier(id)
+    Timber.views_changed_callback(id)
     Timber.setup_params_dirty = true
-	end}
-	
-	params:add{type = "control", id = "by_percentage_" .. id, name = "Percentage", controlspec = specs.BY_PERCENTAGE, formatter = format_by_percentage(id), action = function(value)
-	  update_freq_multiplier(id)
-	  Timber.views_changed_callback(id)
+  end}
+  
+  params:add{type = "control", id = "by_percentage_" .. id, name = "Percentage", controlspec = specs.BY_PERCENTAGE, formatter = format_by_percentage(id), action = function(value)
+    update_freq_multiplier(id)
+    Timber.views_changed_callback(id)
     Timber.setup_params_dirty = true
-	end}
-	params:add{type = "control", id = "by_length_" .. id, name = "Length", controlspec = ControlSpec.new(0.1, 10, "lin", 0, 1, "s"), formatter = format_by_length(id), action = function(value)
-	  update_freq_multiplier(id)
-	  Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "by_length_" .. id, name = "Length", controlspec = ControlSpec.new(0.1, 10, "lin", 0, 1, "s"), formatter = format_by_length(id), action = function(value)
+    update_freq_multiplier(id)
+    Timber.views_changed_callback(id)
     Timber.setup_params_dirty = true
-	end}
-	
-	if include_beat_params then
-  	params:add{type = "option", id = "by_bars_" .. id, name = "Bars", options = {"N/A"}, action = function(value)
-  	  update_freq_multiplier(id)
-  	  Timber.views_changed_callback(id)
+  end}
+  
+  if include_beat_params then
+    params:add{type = "option", id = "by_bars_" .. id, name = "Bars", options = {"N/A"}, action = function(value)
+      update_freq_multiplier(id)
+      Timber.views_changed_callback(id)
       Timber.setup_params_dirty = true
-  	end}
-	end
-	
-	params:add_separator()
-
-	params:add{type = "control", id = "lfo_1_fade_" .. id, name = "LFO1 Fade", controlspec = specs.LFO_FADE, formatter = format_fade, action = function(value)
+    end}
+  end
+  
+  params:add_separator()
+  
+  params:add{type = "control", id = "lfo_1_fade_" .. id, name = "LFO1 Fade", controlspec = specs.LFO_FADE, formatter = format_fade, action = function(value)
     if value < 0 then value = specs.LFO_FADE.minval - 0.00001 + math.abs(value) end
     engine.lfo1Fade(id, value)
     lfos_last_edited = {id = id, param = "lfo_1_fade_" .. id}
     Timber.views_changed_callback(id)
     Timber.lfo_1_dirty = true
   end}
-	params:add{type = "control", id = "lfo_2_fade_" .. id, name = "LFO2 Fade", controlspec = specs.LFO_FADE, formatter = format_fade, action = function(value)
+  params:add{type = "control", id = "lfo_2_fade_" .. id, name = "LFO2 Fade", controlspec = specs.LFO_FADE, formatter = format_fade, action = function(value)
     if value < 0 then value = specs.LFO_FADE.minval - 0.00001 + math.abs(value) end
     engine.lfo2Fade(id, value)
     lfos_last_edited = {id = id, param = "lfo_2_fade_" .. id}
     Timber.views_changed_callback(id)
     Timber.lfo_2_dirty = true
   end}
-	
-	params:add_separator()
-
-	params:add{type = "control", id = "freq_mod_lfo_1_" .. id, name = "Freq Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.freqModLfo1(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "freq_mod_lfo_2_" .. id, name = "Freq Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.freqModLfo2(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "freq_mod_env_" .. id, name = "Freq Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
-	  engine.freqModEnv(id, value)
-	  Timber.views_changed_callback(id)
-	end}
   
   params:add_separator()
-	
-	params:add{type = "control", id = "amp_env_attack_" .. id, name = "Amp Env Attack", controlspec = specs.AMP_ENV_ATTACK, formatter = Formatters.format_secs, action = function(value)
-	  engine.ampAttack(id, value)
-	  Timber.views_changed_callback(id)
-	  Timber.env_dirty = true
-	end}
+
+  params:add{type = "control", id = "freq_mod_lfo_1_" .. id, name = "Freq Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+    engine.freqModLfo1(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "freq_mod_lfo_2_" .. id, name = "Freq Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+    engine.freqModLfo2(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "freq_mod_env_" .. id, name = "Freq Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
+    engine.freqModEnv(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  
+  params:add_separator()
+  
+  params:add{type = "control", id = "amp_env_attack_" .. id, name = "Amp Env Attack", controlspec = specs.AMP_ENV_ATTACK, formatter = Formatters.format_secs, action = function(value)
+    engine.ampAttack(id, value)
+    Timber.views_changed_callback(id)
+    Timber.env_dirty = true
+  end}
   params:add{type = "control", id = "amp_env_decay_" .. id, name = "Amp Env Decay", controlspec = specs.AMP_ENV_DECAY, formatter = Formatters.format_secs, action = function(value)
     engine.ampDecay(id, value)
     Timber.views_changed_callback(id)
@@ -760,69 +760,77 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.filter_dirty = true
     Timber.views_changed_callback(id)
   end}
-	params:add{type = "control", id = "filter_freq_" .. id, name = "Filter Cutoff", controlspec = specs.FILTER_FREQ, formatter = Formatters.format_freq, action = function(value)
-	  engine.filterFreq(id, value)
-	  filter_last_edited = {id = id, param = "filter_freq_" .. id}
-	  Timber.filter_dirty = true
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "filter_resonance_" .. id, name = "Filter Resonance", controlspec = specs.FILTER_RESONANCE, action = function(value)
-	  engine.filterReso(id, value)
-	  filter_last_edited = {id = id, param = "filter_resonance_" .. id}
-	  Timber.filter_dirty = true
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "filter_tracking_" .. id, name = "Filter Tracking", controlspec = specs.FILTER_TRACKING, formatter = format_ratio_to_one, action = function(value)
-	  engine.filterTracking(id, value)
-	  Timber.views_changed_callback(id)
-	end}
+  params:add{type = "control", id = "filter_freq_" .. id, name = "Filter Cutoff", controlspec = specs.FILTER_FREQ, formatter = Formatters.format_freq, action = function(value)
+    engine.filterFreq(id, value)
+    filter_last_edited = {id = id, param = "filter_freq_" .. id}
+    Timber.filter_dirty = true
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "filter_resonance_" .. id, name = "Filter Resonance", controlspec = specs.FILTER_RESONANCE, action = function(value)
+    engine.filterReso(id, value)
+    filter_last_edited = {id = id, param = "filter_resonance_" .. id}
+    Timber.filter_dirty = true
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "filter_tracking_" .. id, name = "Filter Tracking", controlspec = specs.FILTER_TRACKING, formatter = format_ratio_to_one, action = function(value)
+    engine.filterTracking(id, value)
+    Timber.views_changed_callback(id)
+  end}
 
   params:add{type = "control", id = "filter_freq_mod_lfo_1_" .. id, name = "Filter Cutoff Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
     engine.filterFreqModLfo1(id, value)
     Timber.views_changed_callback(id)
   end}
-	params:add{type = "control", id = "filter_freq_mod_lfo_2_" .. id, name = "Filter Cutoff Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+  params:add{type = "control", id = "filter_freq_mod_lfo_2_" .. id, name = "Filter Cutoff Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
     engine.filterFreqModLfo2(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "filter_freq_mod_env_" .. id, name = "Filter Cutoff Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
-	  engine.filterFreqModEnv(id, value)
-	  Timber.views_changed_callback(id)
-	end}
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "filter_freq_mod_env_" .. id, name = "Filter Cutoff Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
+    engine.filterFreqModEnv(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "filter_freq_mod_vel_" .. id, name = "Filter Cutoff Mod (Vel)", controlspec = ControlSpec.BIPOLAR, action = function(value)
+    engine.filterFreqModVel(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "filter_freq_mod_pressure_" .. id, name = "Filter Cutoff Mod (Pres)", controlspec = ControlSpec.BIPOLAR, action = function(value)
+    engine.filterFreqModPressure(id, value)
+    Timber.views_changed_callback(id)
+  end}
 
   params:add_separator()
 
-	params:add{type = "control", id = "pan_" .. id, name = "Pan", controlspec = ControlSpec.PAN, formatter = Formatters.bipolar_as_pan_widget, action = function(value)
-	  engine.pan(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "pan_mod_lfo_1_" .. id, name = "Pan Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.panModLfo1(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "pan_mod_lfo_2_" .. id, name = "Pan Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.panModLfo2(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "pan_mod_env_" .. id, name = "Pan Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
-	  engine.panModEnv(id, value)
-	  Timber.views_changed_callback(id)
-	end}
+  params:add{type = "control", id = "pan_" .. id, name = "Pan", controlspec = ControlSpec.PAN, formatter = Formatters.bipolar_as_pan_widget, action = function(value)
+    engine.pan(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "pan_mod_lfo_1_" .. id, name = "Pan Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+    engine.panModLfo1(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "pan_mod_lfo_2_" .. id, name = "Pan Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+    engine.panModLfo2(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "pan_mod_env_" .. id, name = "Pan Mod (Env)", controlspec = ControlSpec.BIPOLAR, action = function(value)
+    engine.panModEnv(id, value)
+    Timber.views_changed_callback(id)
+  end}
   
   params:add{type = "control", id = "amp_" .. id, name = "Amp", controlspec = specs.AMP, action = function(value)
     engine.amp(id, value)
     Timber.views_changed_callback(id)
   end}
   params:add{type = "control", id = "amp_mod_lfo_1_" .. id, name = "Amp Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.ampModLfo1(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	params:add{type = "control", id = "amp_mod_lfo_2_" .. id, name = "Amp Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
-	  engine.ampModLfo2(id, value)
-	  Timber.views_changed_callback(id)
-	end}
-	
-	Timber.num_sample_params = Timber.num_sample_params + 1
+    engine.ampModLfo1(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  params:add{type = "control", id = "amp_mod_lfo_2_" .. id, name = "Amp Mod (LFO2)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
+    engine.ampModLfo2(id, value)
+    Timber.views_changed_callback(id)
+  end}
+  
+  Timber.num_sample_params = Timber.num_sample_params + 1
 end
 
 
@@ -1245,7 +1253,7 @@ function Timber.UI.Waveform:redraw()
       
       -- Edited param value
       if Timber.shift_mode then
-        info = params:get(self.last_edited_param) .. " (" .. params:string(self.last_edited_param) .. ")"
+        info = params:get(self.last_edited_param) .. " (" .. params:string(self.last_edited_param) .. ")***"
       else
         info = params:string(self.last_edited_param)
       end
@@ -1261,7 +1269,7 @@ function Timber.UI.Waveform:redraw()
       
       if Timber.shift_mode then
         -- Frames
-        info = samples_meta[self.sample_id].num_frames .. " (" .. info .. ")"
+        info = samples_meta[self.sample_id].num_frames .. " (" .. info .. ")&&&"
       else
         info = info .. " " .. params:string("play_mode_" .. self.sample_id)
       end
@@ -1727,6 +1735,48 @@ function Timber.UI.Lfos:redraw()
 end
 
 
+-------- Matrices --------
+
+local function draw_matrix(cols, rows, data, index, shift_mode)
+  local grid_left = 46
+  local grid_top = 27
+  local col = 28
+  
+  screen.level(3)
+  
+  if not Timber.shift_mode then
+    for i = 1, #cols do
+      if (index - 1) % 3 + 1 == i then screen.level(15) end
+      screen.move(grid_left + (i - 1) * col, 9)
+      screen.text_center(cols[i])
+      if (index - 1) % 3 + 1 == i then screen.level(3) end
+    end
+  end
+  
+  for i = 1, #rows do
+    if math.ceil(index / 3) == i then screen.level(15) end
+    screen.move(4, grid_top + (i - 1) * 11)
+    screen.text(rows[i])
+    if math.ceil(index / 3) == i then screen.level(3) end
+  end
+  
+  local x = grid_left
+  local y = grid_top
+  for i = 1, #data do
+    if i == index then screen.level(15) end
+    screen.move(x, y)
+    screen.text_center(data[i])
+    if i == index then screen.level(3) end
+    x = x + col
+    if i % 3 == 0 then
+      x = grid_left
+      y = y + 11
+    end
+  end
+  
+  screen.fill()
+end
+
 -------- Mod Matrix --------
 
 Timber.UI.ModMatrix = {}
@@ -1815,53 +1865,83 @@ function Timber.UI.ModMatrix:redraw()
   
   Timber.draw_title(self.sample_id, false)
   
-  local grid_left = 46
-  local grid_top = 27
-  local col = 28
-  
-  screen.level(3)
-  
-  if not Timber.shift_mode then
-    local sources = {"LFO1", "LFO2", "Env"}
-    for i = 1, #sources do
-      if (self.index - 1) % 3 + 1 == i then screen.level(15) end
-      screen.move(grid_left + (i - 1) * col, 9)
-      screen.text_center(sources[i])
-      if (self.index - 1) % 3 + 1 == i then screen.level(3) end
-    end
-  end
-  
-  local destinations = {"Freq", "Filter", "Pan", "Amp"}
-  for i = 1, #destinations do
-    if math.ceil(self.index / 3) == i then screen.level(15) end
-    screen.move(4, grid_top + (i - 1) * 11)
-    screen.text(destinations[i])
-    if math.ceil(self.index / 3) == i then screen.level(3) end
-  end
-  
   local grid_text = {
     params:get("freq_mod_lfo_1_" .. self.sample_id), params:get("freq_mod_lfo_2_" .. self.sample_id), params:get("freq_mod_env_" .. self.sample_id),
     params:get("filter_freq_mod_lfo_1_" .. self.sample_id), params:get("filter_freq_mod_lfo_2_" .. self.sample_id), params:get("filter_freq_mod_env_" .. self.sample_id),
     params:get("pan_mod_lfo_1_" .. self.sample_id), params:get("pan_mod_lfo_2_" .. self.sample_id), params:get("pan_mod_env_" .. self.sample_id),
-    params:get("amp_mod_lfo_1_" .. self.sample_id), params:get("amp_mod_lfo_2_" .. self.sample_id), "/",
+    params:get("amp_mod_lfo_1_" .. self.sample_id), params:get("amp_mod_lfo_2_" .. self.sample_id), "/"
   }
-  local x = grid_left
-  local y = grid_top
-  for i = 1, 12 do
-    if i == self.index then screen.level(15) end
-    local text = grid_text[i]
-    if i < 12 then text = util.round(text * 100) end
-    screen.move(x, y)
-    screen.text_center(text)
-    if i == self.index then screen.level(3) end
-    x = x + col
-    if i % 3 == 0 then
-      x = grid_left
-      y = y + 11
-    end
+  for i = 1, #grid_text - 1 do
+    grid_text[i] = util.round(grid_text[i] * 100)
   end
   
-  screen.fill()
+  draw_matrix({"LFO1", "LFO2", "Env"}, {"Freq", "Filter", "Pan", "Amp"}, grid_text, self.index)
+end
+
+-------- Key Matrix --------
+
+Timber.UI.KeyMatrix = {}
+Timber.UI.KeyMatrix.__index = Timber.UI.KeyMatrix
+
+function Timber.UI.KeyMatrix.new(sample_id, index)
+  local matrix = {
+    sample_id = sample_id or 1,
+    index = index or 1
+  }
+  setmetatable(Timber.UI.KeyMatrix, {__index = Timber.UI})
+  setmetatable(matrix, Timber.UI.KeyMatrix)
+  return matrix
+end
+
+function Timber.UI.KeyMatrix:set_sample_id(id)
+  self.sample_id = id
+end
+
+function Timber.UI.KeyMatrix:set_index(index)
+  self.index = util.clamp(index, 1, 3)
+end
+
+function Timber.UI.KeyMatrix:enc(n, delta)
+  if n == 2 then
+    self:set_index(self.index + delta)
+  elseif n == 3 then
+    if Timber.shift_mode then delta = delta * 0.1 end
+    if self.index == 1 then
+      params:delta("filter_freq_mod_vel_" .. self.sample_id, delta)
+    elseif self.index == 2 then
+      params:delta("filter_freq_mod_pressure_" .. self.sample_id, delta)
+    elseif self.index == 3 then
+      params:delta("filter_tracking_" .. self.sample_id, delta)
+    end
+  end
+  Timber.views_changed_callback(self.sample_id)
+end
+
+function Timber.UI.KeyMatrix:key(n, z)
+  if n == 3 and z == 1 then
+    if self.index == 1 then
+      params:set("filter_freq_mod_vel_" .. self.sample_id, 0)
+    elseif self.index == 2 then
+      params:set("filter_freq_mod_pressure_" .. self.sample_id, 0)
+    elseif self.index == 3 then
+      params:set("filter_tracking_" .. self.sample_id, 1)
+    end
+    Timber.views_changed_callback(self.sample_id)
+  end
+end
+
+function Timber.UI.KeyMatrix:redraw()
+  
+  Timber.draw_title(self.sample_id, false)
+  
+  local grid_text = {
+    params:get("filter_freq_mod_vel_" .. self.sample_id), params:get("filter_freq_mod_pressure_" .. self.sample_id), params:string("filter_tracking_" .. self.sample_id)
+  }
+  for i = 1, 2 do
+    grid_text[i] = util.round(grid_text[i] * 100)
+  end
+  
+  draw_matrix({"Vel", "Pres", "Key"}, {"Filter"}, grid_text, self.index)
 end
 
 
