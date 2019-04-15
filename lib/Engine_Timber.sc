@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Mark Eats
+// v1.0.0 Beta 1 Mark Eats
 
 Engine_Timber : CroneEngine {
 
