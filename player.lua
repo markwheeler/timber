@@ -1,9 +1,9 @@
 -- Timber Player
--- 1.0.0 @markeats
+-- 1.0.0 Beta 1 @markeats
 -- llllllll.co/t/timber
 --
--- Grid or MIDI keys
--- play samples.
+-- Trigger samples with a grid
+-- or MIDI keyboard.
 --
 -- E1 : Page
 -- K1+E1 : Sample slot
@@ -104,7 +104,7 @@ local function load_folder(file, add)
     if v == file then found = true end
     if found then
       if sample_id > 255 then
-        print("Max")
+        print("Max files loaded")
         break
       end
       -- Check file type
@@ -425,7 +425,7 @@ local function midi_event(device_id, data)
       elseif msg.type == "pitchbend" then
         local bend_st = (util.round(msg.val / 2)) / 8192 * 2 -1 -- Convert to -1 to 1
         local bend_range = params:get("bend_range")
-        set_pitch_bend_all(bend_st * bend_range) --TODO test
+        set_pitch_bend_all(bend_st * bend_range)
         
       end
     end
@@ -834,34 +834,6 @@ function init()
     params:add_separator()
     Timber.add_sample_params(i, true, extra_params)
   end
-    
-  -- TODO Stream startup tests
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/rim-buffer.aif")
-  -- params:set("sample_1", "/home/we/dust/audio/mark_eats/Tests/rim-stream.aif")
-  
-  params:set("sample_0", "/home/we/dust/audio/common/808/808-BD.wav")
-  params:set("sample_1", "/home/we/dust/audio/common/808/808-SD.wav")
-  params:set("sample_2", "/home/we/dust/audio/common/808/808-CB.wav")
-  params:set("sample_3", "/home/we/dust/audio/common/808/808-CH.wav")
-  params:set("sample_4", "/home/we/dust/audio/common/808/808-OH.wav")
-  params:set("sample_5", "/home/we/dust/audio/common/808/808-CY.wav")
-  params:set("sample_6", "/home/we/dust/audio/common/808/808-CL.wav")
-  params:set("sample_7", "/home/we/dust/audio/common/808/808-CP.wav")
-  params:set("sample_8", "/home/we/dust/audio/common/808/808-LC.wav")
-  params:set("sample_9", "/home/we/dust/audio/common/808/808-MC.wav")
-  params:set("sample_10", "/home/we/dust/audio/common/808/808-HC.wav")
-  params:set("sample_11", "/home/we/dust/audio/common/808/808-LT.wav")
-  params:set("sample_12", "/home/we/dust/audio/common/808/808-MT.wav")
-  params:set("sample_13", "/home/we/dust/audio/common/808/808-HT.wav")
-  params:set("sample_14", "/home/we/dust/audio/common/808/808-MA.wav")
-  params:set("sample_15", "/home/we/dust/audio/common/808/808-RS.wav")
-  params:set("sample_32", "/home/we/dust/audio/mark_eats/Tests/piano-c.wav")
-  params:set("sample_33", "/home/we/dust/audio/mark_eats/Tests/piano-c-rev.wav")
-  params:set("sample_34", "/home/we/dust/audio/mark_eats/Tests/loop-long.wav")
-  params:set("sample_35", "/home/we/dust/audio/mark_eats/Tests/loop-short.wav")
-  params:set("sample_36", "/home/we/dust/audio/mark_eats/Tests/count.wav")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/metro-test-4-bars-110bpm.aif")
-  -- params:set("sample_1", "/home/we/dust/audio/mark_eats/Tests/metro-test-8-bars-110bpm.aif")
   
   
   -- UI

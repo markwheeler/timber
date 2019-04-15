@@ -1,9 +1,9 @@
 -- Timber Keys
--- 1.0.0 @markeats
+-- 1.0.0 Beta 1 @markeats
 -- llllllll.co/t/timber
 --
--- Map samples across
--- a MIDI keyboard.
+-- Map samples across a
+-- MIDI keyboard.
 --
 -- E1 : Page
 -- K1+E1 : Sample slot
@@ -200,12 +200,12 @@ local function midi_event(data)
   -- Note off
   if msg.type == "note_off" then
     note_off(voice_id, sample_id)
-    print("note off", msg.note, voice_id, sample_id)
+    -- print("note off", msg.note, voice_id, sample_id)
   
   -- Note on
   elseif msg.type == "note_on" then
     note_on(voice_id, sample_id, MusicUtil.note_num_to_freq(msg.note), msg.vel / 127)
-    print("note on", msg.note, msg.vel, voice_id, sample_id)
+    -- print("note on", msg.note, msg.vel, voice_id, sample_id)
     
   -- Key pressure
   elseif msg.type == "key_pressure" then
@@ -401,14 +401,8 @@ function init()
     Timber.add_sample_params(i)
   end
   
-  params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/piano-c.wav")
-  params:set("sample_1", "/home/we/dust/audio/common/808/808-BD.wav")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/count.wav")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/loop-long.wav")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/loop-short.wav")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/transients-100bpm-mono.aif")
-  -- params:set("sample_0", "/home/we/dust/audio/mark_eats/Tests/rim-stream.aif")
-  -- params:set("sample_1", "/home/we/dust/audio/mark_eats/Tests/rim-buffer.aif")
+  -- Default sample
+  params:set("sample_0", "/home/we/dust/code/timber/audio/piano-c.wav")
   
   -- UI
   

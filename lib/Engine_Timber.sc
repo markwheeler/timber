@@ -482,9 +482,8 @@ Engine_Timber : CroneEngine {
 						// If file is over the buffer-addressable number of frames (~5.8mins at 48kHz) then prepare it for streaming instead.
 						// Streaming has fairly limited options for playback (no looping etc).
 
-						// TODO
-						// if(file.numFrames < 16777216, {
-						if(file.duration < 10, {
+						if(file.numFrames < 16777216, {
+						// if(file.duration < 10, {
 
 							// Load into memory
 							if(file.numChannels == 1, {
@@ -795,9 +794,6 @@ Engine_Timber : CroneEngine {
 		arg defName, voiceId, sampleId, buffer, freq, pitchBendRatio, vel, delay;
 		var newVoice, sample = samples[sampleId];
 
-		// TODO sometimes makeBundle causes "FAILURE IN SERVER /s_get Node 9 not found" error?!
-		// context.server.makeBundle(nil, {
-
 		newVoice = (id: voiceId, sampleId: sampleId, gate: 1);
 
 		// Delay adding a new synth until after killDuration if need be
@@ -891,8 +887,6 @@ Engine_Timber : CroneEngine {
 		}.play;
 
 		voiceList.addFirst(newVoice);
-
-		// });
 	}
 
 
@@ -1081,7 +1075,11 @@ Engine_Timber : CroneEngine {
 
 		this.addCommand(\detuneCents, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \detuneCents, msg[2]);
+			var sampleId = msg[1], value = msg[2];
+			if(samples[sampleId].notNil, {
+				samples[sampleId][\detuneCents] = value;
+				this.setArgOnVoicesPlayingSample(sampleId, \detuneRatio, (value / 100).midiratio);
+			});
 		});
 
 		this.addCommand(\startFrame, "ii", {
@@ -1284,12 +1282,13 @@ Engine_Timber : CroneEngine {
 				});
 			});
 		});
+		// NOTE: Are these already getting freed elsewhere?
 		scriptAddress.free;
 		replyFunc.free;
 		synthNames.free;
-		voiceGroup.free;
 		voiceList.free;
 		players.free;
+		voiceGroup.free;
 		lfos.free;
 		mixer.free;
 	}
