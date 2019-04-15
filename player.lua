@@ -74,6 +74,8 @@ local mod_env_view
 local lfos_view
 local mod_matrix_view
 
+local play_visuals = {}
+
 local current_sample_id = 0
 local shift_mode = false
 local file_select_active = false
@@ -137,11 +139,22 @@ local function id_to_y(id)
   return math.ceil(id / grid_w)
 end
 
+local function add_play_visual()
+  local visual = {
+    level = math.random(8, 10),
+    x = math.random(4, 51),
+    y = math.random(8, 55),
+    size = 2,
+  }
+  table.insert(play_visuals, visual)
+end
+
 local function note_on(sample_id, vel)
   if Timber.samples_meta[sample_id].num_frames > 0 then
     vel = vel or 1
     engine.noteOn(sample_id, sample_id, MusicUtil.note_num_to_freq(60), vel)
     sample_status[sample_id] = STATUS.PLAYING
+    add_play_visual()
     screen_dirty = true
     grid_dirty = true
   end
@@ -449,6 +462,15 @@ end
 local function update()
   waveform_view:update()
   lfos_view:update()
+  
+  for i = #play_visuals, 1, -1 do
+    play_visuals[i].size = play_visuals[i].size + 1.5
+    play_visuals[i].level = play_visuals[i].level - 1.5
+    if play_visuals[i].level < 1 then
+      table.remove(play_visuals, i)
+    end
+    screen_dirty = true
+  end
 end
 
 function grid_redraw()
@@ -628,8 +650,16 @@ function GlobalView:redraw()
     screen.level(15)
     screen.text(params:get("bpm") .. " BPM")
   end
-  
   screen.fill()
+  
+  screen.line_width(0.75)
+  for k, v in pairs(play_visuals) do
+    screen.level(util.round(v.level))
+    screen.circle(v.x, v.y, v.size)
+    screen.stroke()
+  end
+  screen.line_width(1)
+  
 end
 
 
