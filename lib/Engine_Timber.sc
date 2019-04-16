@@ -130,16 +130,13 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i] = {
-				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame;
+				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 
 				var signal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
-				latchedStartFrame, firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl, loopDuration;
+				firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl;
 
-				latchedStartFrame = Latch.kr(startFrame, 1);
 				firstFrame = startFrame.min(endFrame);
 				lastFrame = startFrame.max(endFrame);
-
-				loopDuration = loopEndFrame - loopStartFrame;
 
 				loopEnabled = InRange.kr(playMode, 0, 1);
 				loopInf = InRange.kr(playMode, 1, 1);
@@ -147,18 +144,18 @@ Engine_Timber : CroneEngine {
 				direction = (endFrame - startFrame).sign;
 				rate = freqRatio * BufRateScale.ir(bufnum) * direction;
 
-				progress = (Sweep.ar(1, SampleRate.ir * rate) + latchedStartFrame).clip(firstFrame, lastFrame);
+				progress = (Sweep.ar(1, SampleRate.ir * rate) + i_lockedStartFrame).clip(firstFrame, lastFrame);
 
 				shouldLoop = loopEnabled * gate.max(loopInf);
 
 				inLoop = Select.ar(direction > 0, [
-					progress <= loopEndFrame,
-					progress >= loopStartFrame
+					progress < (loopEndFrame - 1), // This tiny offset seems odd but avoids some clicks when phasor start changes
+					progress > (loopStartFrame + 1)
 				]);
 				inLoop = PulseCount.ar(inLoop).clip * shouldLoop;
 
 				phaseStart = Select.kr(inLoop, [
-					latchedStartFrame,
+					i_lockedStartFrame,
 					loopStartFrame
 				]);
 				// Let phase run over end so it is caught by FreeSelf below. 150 is chosen to work even with drastic re-pitching.
@@ -214,10 +211,8 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i + 2] = {
-				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, endFrame, loopStartFrame, loopEndFrame;
+				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 				var signal, rate, progress, loopEnabled, oneShotActive, duckDuration, startEndDuckControl;
-
-				startFrame = Latch.kr(startFrame, 1);
 
 				loopEnabled = InRange.kr(playMode, 0, 1);
 
@@ -225,7 +220,7 @@ Engine_Timber : CroneEngine {
 
 				signal = VDiskIn.ar(numChannels: i + 1, bufnum: bufnum, rate: rate, loop: loopEnabled);
 
-				progress = Sweep.ar(1, SampleRate.ir * rate) + startFrame;
+				progress = Sweep.ar(1, SampleRate.ir * rate) + i_lockedStartFrame;
 				progress = Select.ar(loopEnabled, [progress.clip(0, endFrame), progress.wrap(0, numFrames)]);
 
 				SendReply.kr(trig: Impulse.kr(15), cmdName: '/replyPlayPosition', values: [sampleId, voiceId, progress / numFrames]);
@@ -234,9 +229,9 @@ Engine_Timber : CroneEngine {
 				duckDuration = 0.003 * sampleRate * rate.reciprocal;
 
 				// Start
-				startEndDuckControl = Select.ar(startFrame > 0, [
+				startEndDuckControl = Select.ar(i_lockedStartFrame > 0, [
 					K2A.ar(1),
-					progress.linlin(startFrame, startFrame + duckDuration, 0, 1) + (progress < startFrame)
+					progress.linlin(i_lockedStartFrame, i_lockedStartFrame + duckDuration, 0, 1) + (progress < i_lockedStartFrame)
 				]);
 
 				// End
@@ -246,7 +241,7 @@ Engine_Timber : CroneEngine {
 				]);
 
 				// Duck at end of stream if loop is enabled and startFrame > 0
-				startEndDuckControl = startEndDuckControl * Select.ar(loopEnabled * (startFrame > 0), [
+				startEndDuckControl = startEndDuckControl * Select.ar(loopEnabled * (i_lockedStartFrame > 0), [
 					K2A.ar(1),
 					progress.linlin(numFrames - duckDuration, numFrames, 1, 0)
 				]);
@@ -820,6 +815,7 @@ Engine_Timber : CroneEngine {
 				\pressureSample, sample.pressure,
 
 				\startFrame, sample.startFrame,
+				\i_lockedStartFrame, sample.startFrame,
 				\endFrame, sample.endFrame,
 				\playMode, sample.playMode,
 				\loopStartFrame, sample.loopStartFrame,
