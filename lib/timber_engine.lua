@@ -1239,7 +1239,7 @@ function Timber.UI.Waveform:redraw()
       
       -- Edited param value
       if Timber.shift_mode then
-        info = params:get(self.last_edited_param) .. " (" .. params:string(self.last_edited_param) .. ")***"
+        info = params:get(self.last_edited_param) .. " (" .. params:string(self.last_edited_param) .. ")"
       else
         info = params:string(self.last_edited_param)
       end
@@ -1255,7 +1255,7 @@ function Timber.UI.Waveform:redraw()
       
       if Timber.shift_mode then
         -- Frames
-        info = samples_meta[self.sample_id].num_frames .. " (" .. info .. ")&&&"
+        info = samples_meta[self.sample_id].num_frames .. " (" .. info .. ")"
       else
         info = info .. " " .. params:string("play_mode_" .. self.sample_id)
       end
