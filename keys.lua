@@ -402,7 +402,7 @@ function init()
   end
   
   -- Default sample
-  params:set("sample_0", "/home/we/dust/code/timber/audio/piano-c.wav")
+  params:set("sample_0", _path.code .. "/timber/audio/piano-c.wav")
   
   -- UI
   

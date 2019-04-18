@@ -410,7 +410,13 @@ Engine_Timber : CroneEngine {
 		activeVoices = voiceList.select{arg v; v.sampleId == sampleId};
 		activeVoices.do({
 			arg v;
-			v.theSynth.set(\killGate, -1);
+			if(v.startRoutine.notNil, {
+				v.startRoutine.stop;
+				v.startRoutine.free;
+			}, {
+				v.theSynth.set(\killGate, -1);
+			});
+			voiceList.remove(v);
 		});
 
 		if(samples[sampleId].buffer.notNil, {
@@ -420,6 +426,13 @@ Engine_Timber : CroneEngine {
 		});
 
 		samples[sampleId].numFrames = 0;
+	}
+
+	moveSample {
+		arg fromId, toId;
+		var fromSample = samples[fromId];
+		samples[fromId] = samples[toId];
+		samples[toId] = fromSample;
 	}
 
 	loadFailed {
@@ -1062,6 +1075,11 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\clearSamples, "ii", {
 			arg msg;
 			this.clearSamples(msg[1], msg[2]);
+		});
+
+		this.addCommand(\moveSample, "ii", {
+			arg msg;
+			this.moveSample(msg[1], msg[2]);
 		});
 
 		this.addCommand(\originalFreq, "if", {
