@@ -402,7 +402,7 @@ Engine_Timber : CroneEngine {
 		});
 	}
 
-	clearBuffer {
+	killVoicesPlaying {
 		arg sampleId;
 		var activeVoices;
 
@@ -418,6 +418,12 @@ Engine_Timber : CroneEngine {
 			});
 			voiceList.remove(v);
 		});
+	}
+
+	clearBuffer {
+		arg sampleId;
+
+		this.killVoicesPlaying(sampleId);
 
 		if(samples[sampleId].buffer.notNil, {
 			samples[sampleId].buffer.close;
@@ -431,6 +437,9 @@ Engine_Timber : CroneEngine {
 	moveSample {
 		arg fromId, toId;
 		var fromSample = samples[fromId];
+
+		this.killVoicesPlaying(fromId);
+		this.killVoicesPlaying(toId);
 		samples[fromId] = samples[toId];
 		samples[toId] = fromSample;
 	}

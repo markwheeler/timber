@@ -10,9 +10,9 @@
 -- K1 (Hold) : Shift / Fine
 --
 -- GLOBAL PAGE:
---  K2 : Load folder
---  K1+K2 : Add folder
---  K3 : Play / Stop
+--  K2 : Play / Stop
+--  K3 : Load folder
+--  K1+K3 : Add folder
 --  E3 : BPM
 --
 -- SAMPLE PAGES:
@@ -73,8 +73,6 @@ local amp_env_view
 local mod_env_view
 local lfos_view
 local mod_matrix_view
-
-local play_visuals = {}
 
 local current_sample_id = 0
 local shift_mode = false
@@ -139,22 +137,12 @@ local function id_to_y(id)
   return math.ceil(id / grid_w)
 end
 
-local function add_play_visual()
-  local visual = {
-    level = math.random(8, 10),
-    x = math.random(4, 51),
-    y = math.random(8, 55),
-    size = 2,
-  }
-  table.insert(play_visuals, visual)
-end
-
 local function note_on(sample_id, vel)
   if Timber.samples_meta[sample_id].num_frames > 0 then
     vel = vel or 1
     engine.noteOn(sample_id, sample_id, MusicUtil.note_num_to_freq(60), vel)
     sample_status[sample_id] = STATUS.PLAYING
-    add_play_visual()
+    global_view:add_play_visual()
     screen_dirty = true
     grid_dirty = true
   end
@@ -460,17 +448,9 @@ local function grid_key(x, y, z)
 end
 
 local function update()
+  global_view:update()
   waveform_view:update()
   lfos_view:update()
-  
-  for i = #play_visuals, 1, -1 do
-    play_visuals[i].size = play_visuals[i].size + 1.5
-    play_visuals[i].level = play_visuals[i].level - 1.5
-    if play_visuals[i].level < 1 then
-      table.remove(play_visuals, i)
-    end
-    screen_dirty = true
-  end
 end
 
 function grid_redraw()
@@ -522,14 +502,26 @@ local GlobalView = {}
 GlobalView.__index = GlobalView
 
 function GlobalView.new()
-  local global = {}
+  local global = {
+    play_visuals = {}
+  }
   setmetatable(GlobalView, {__index = GlobalView})
   setmetatable(global, GlobalView)
   return global
 end
 
+function GlobalView:add_play_visual()
+  local visual = {
+    level = math.random(8, 10),
+    x = math.random(68, 115),
+    y = math.random(8, 55),
+    size = 2,
+  }
+  table.insert(self.play_visuals, visual)
+end
+
 function GlobalView:enc(n, delta)
-  if n == 3 and beat_clock.external == false then
+  if n == 2 and beat_clock.external == false then
     params:delta("bpm", delta)
   end
   callback_set_screen_dirty(nil)
@@ -538,19 +530,6 @@ end
 function GlobalView:key(n, z)
   if z == 1 then
     if n == 2 then
-        file_select_active = true
-        local add = shift_mode
-        shift_mode = false
-        Timber.shift_mode = shift_mode
-        Timber.FileSelect.enter(_path.audio, function(file)
-          file_select_active = false
-          screen_dirty = true
-          if file ~= "cancel" then
-            load_folder(file, add)
-          end
-        end)
-      
-    elseif n == 3 then
       if not beat_clock.external then
         if beat_clock.playing then
           beat_clock:stop()
@@ -559,6 +538,31 @@ function GlobalView:key(n, z)
           beat_clock:start()
         end
       end
+      
+    elseif n == 3 then
+      file_select_active = true
+      local add = shift_mode
+      shift_mode = false
+      Timber.shift_mode = shift_mode
+      Timber.FileSelect.enter(_path.audio, function(file)
+        file_select_active = false
+        screen_dirty = true
+        if file ~= "cancel" then
+          load_folder(file, add)
+        end
+      end)
+      
+    end
+    callback_set_screen_dirty(nil)
+  end
+end
+
+function GlobalView:update()
+  for i = #self.play_visuals, 1, -1 do
+    self.play_visuals[i].size = self.play_visuals[i].size + 1.5
+    self.play_visuals[i].level = self.play_visuals[i].level - 1.5
+    if self.play_visuals[i].level < 1 then
+      table.remove(self.play_visuals, i)
     end
     callback_set_screen_dirty(nil)
   end
@@ -571,10 +575,10 @@ function GlobalView:redraw()
     
     if beat_clock.playing and i == beat_clock.beat + 1 then
       screen.level(15)
-      screen.rect(67 + (i - 1) * 12, 19, 4, 4)
+      screen.rect(3 + (i - 1) * 12, 19, 4, 4)
     else
       screen.level(3)
-      screen.rect(68 + (i - 1) * 12, 20, 2, 2)
+      screen.rect(4 + (i - 1) * 12, 20, 2, 2)
     end
     screen.fill()
   end
@@ -597,7 +601,7 @@ function GlobalView:redraw()
   
   if draw_grid then
     
-    local LEFT = 4
+    local LEFT = 68
     local top = 8
     local SIZE = 2
     local GUTTER = 1
@@ -629,9 +633,9 @@ function GlobalView:redraw()
   else
     
     screen.level(3)
-    screen.move(4, 28)
-    screen.text("KEY2 to")
-    screen.move(4, 37)
+    screen.move(68, 28)
+    screen.text("K3 to")
+    screen.move(68, 37)
     if shift_mode then
       screen.text("add folder")
     else
@@ -642,7 +646,7 @@ function GlobalView:redraw()
   end
   
   -- Info
-  screen.move(68, 37)
+  screen.move(4, 37)
   if beat_clock.external then
     screen.level(3)
     screen.text("External")
@@ -653,7 +657,7 @@ function GlobalView:redraw()
   screen.fill()
   
   screen.line_width(0.75)
-  for k, v in pairs(play_visuals) do
+  for k, v in pairs(self.play_visuals) do
     screen.level(util.round(v.level))
     screen.circle(v.x, v.y, v.size)
     screen.stroke()

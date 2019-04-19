@@ -45,6 +45,17 @@ Timber.specs = specs
 Timber.options = options
 Timber.samples_meta = samples_meta
 Timber.num_sample_params = 0
+
+local param_ids = {
+  "sample", "quality", "original_freq", "detune_cents", "play_mode", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame",
+  "scale_by", "by_percentage", "by_length", "by_bars",
+  "freq_mod_lfo_1", "freq_mod_lfo_2", "freq_mod_env",
+  "filter_type", "filter_freq", "filter_resonance", "filter_freq_mod_lfo_1", "filter_freq_mod_lfo_2", "filter_freq_mod_env", "filter_freq_mod_vel", "filter_freq_mod_pressure", "filter_tracking",
+  "pan", "pan_mod_lfo_1", "pan_mod_lfo_2", "pan_mod_env", "amp", "amp_mod_lfo_1", "amp_mod_lfo_2",
+  "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release",
+  "mod_env_attack", "mod_env_decay", "mod_env_sustain", "mod_env_release",
+  "lfo_1_fade", "lfo_2_fade"
+}
 local extra_param_ids = {}
 local beat_params = false
 
@@ -113,6 +124,13 @@ local filter_last_edited
 
 
 -- Functions
+
+local function copy_table(obj)
+  if type(obj) ~= "table" then return obj end
+  local result = setmetatable({}, getmetatable(obj))
+  for k, v in pairs(obj) do result[copy_table(k)] = copy_table(v) end
+  return result
+end
 
 local function lookup_play_mode(sample_id)
   return options.PLAY_MODE_IDS[samples_meta[sample_id].streaming + 1][params:get("play_mode_" .. sample_id)]
@@ -208,31 +226,23 @@ end
 function Timber.clear_samples(first, last)
   first = first or 0
   last = last or first
+  if last < first then last = first end
   
   engine.clearSamples(first, last)
   
-  local param_ids = {
-    "sample", "quality", "original_freq", "detune_cents", "play_mode", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame",
-    "scale_by", "by_percentage", "by_length", "by_bars",
-    "freq_mod_lfo_1", "freq_mod_lfo_2", "freq_mod_env",
-    "filter_type", "filter_freq", "filter_resonance", "filter_freq_mod_lfo_1", "filter_freq_mod_lfo_2", "filter_freq_mod_env", "filter_freq_mod_vel", "filter_freq_mod_pressure", "filter_tracking",
-    "pan", "pan_mod_lfo_1", "pan_mod_lfo_2", "pan_mod_env", "amp", "amp_mod_lfo_1", "amp_mod_lfo_2",
-    "amp_env_attack", "amp_env_decay", "amp_env_sustain", "amp_env_release",
-    "mod_env_attack", "mod_env_decay", "mod_env_sustain", "mod_env_release",
-    "lfo_1_fade", "lfo_2_fade"
-  }
-  for _, v in pairs(extra_param_ids) do
-    table.insert(param_ids, v)
-  end
+  local extended_params = {}
+  for _, v in pairs(param_ids) do table.insert(extended_params, v) end
+  for _, v in pairs(extra_param_ids) do table.insert(extended_params, v) end
   
   for i = first, last do
     
     samples_meta[i] = default_sample()
     
     -- Set all params to default without firing actions
-    for k, v in pairs(param_ids) do
+    for k, v in pairs(extended_params) do
       local param = params:lookup_param(v .. "_" .. i)
       local param_action = param.action
+      param.action = function(value) end
       if param.t == 3 then -- Control
         params:set(v .. "_" .. i, param.controlspec.default)
       elseif param.t == 4 then -- File
@@ -247,6 +257,68 @@ function Timber.clear_samples(first, last)
     Timber.waveform_changed_callback(i)
     Timber.play_positions_changed_callback(i)
   end
+  
+  Timber.views_changed_callback(nil)
+  Timber.setup_params_dirty = true
+end
+
+local function copy_param(from_param, to_param)
+  local to_param_action = to_param.action
+  to_param.action = function(value) end
+  
+  if to_param.t == 3 then -- Control
+    to_param.controlspec = from_param.controlspec
+    to_param:set(from_param:get())
+  elseif to_param.t == 4 then -- File
+    to_param:set(from_param:get())
+  elseif from_param.t ~= 6 then -- Not trigger
+    to_param:set(from_param:get())
+  end
+  
+  to_param.action = to_param_action
+  return to_param
+end
+
+function Timber.move_sample(from_id, to_id)
+  
+  if from_id == to_id then return end
+  
+  engine.moveSample(from_id, to_id)
+  
+  local from_meta = samples_meta[from_id]
+  samples_meta[from_id] = samples_meta[to_id]
+  samples_meta[to_id] = from_meta
+  
+  local extended_params = {}
+  for _, v in pairs(param_ids) do table.insert(extended_params, v) end
+  for _, v in pairs(extra_param_ids) do table.insert(extended_params, v) end
+  
+  for k, v in pairs(extended_params) do
+    
+    local from_param = params:lookup_param(v .. "_" .. from_id)
+    local to_param = params:lookup_param(v .. "_" .. to_id)
+    local to_param_orig = copy_table(to_param)
+    
+    to_param = copy_param(from_param, to_param)
+    from_param = copy_param(to_param_orig, from_param)
+  end
+  
+  local ids = {from_id, to_id}
+  for _, id in pairs(ids) do
+    samples_meta[id].positions = {}
+    samples_meta[id].playing = false
+    Timber.meta_changed_callback(id)    
+    Timber.waveform_changed_callback(id)
+    Timber.play_positions_changed_callback(id)
+  end
+  
+  Timber.views_changed_callback(nil)
+  Timber.setup_params_dirty = true
+end
+
+function Timber.copy_params(from_id, to_first_id, to_last_id, param_ids)
+  
+  --TODO
   
   Timber.views_changed_callback(nil)
   Timber.setup_params_dirty = true
@@ -655,10 +727,12 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   params:add{type = "control", id = "end_frame_" .. id, name = "End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
     set_marker(id, "end_frame_")
   end}
-  params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
+  params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0),
+    formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
     set_marker(id, "loop_start_frame_")
   end}
-  params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
+  params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0),
+    formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
     set_marker(id, "loop_end_frame_")
   end}
   
@@ -853,8 +927,8 @@ function Timber.draw_title(sample_id, show_sample_name)
       title = params:string("sample_" .. sample_id)
     end
     
-    if string.len(title) > 20 then
-      title = string.sub(title, 1, 20) .. "..."
+    if string.len(title) > 19 then
+      title = string.sub(title, 1, 19) .. "..."
     end
     screen.text(title)
   end
@@ -880,8 +954,10 @@ local function update_setup_params(self)
   end
   
   self.param_names = {
-    nil,
-    nil,
+    "",
+    "",
+    "",
+    "",
     "quality_" .. self.sample_id,
     "original_freq_" .. self.sample_id,
     "detune_cents_" .. self.sample_id,
@@ -889,7 +965,7 @@ local function update_setup_params(self)
     scale
   }
   
-  self.names_list.entries = {"Load", "Clear", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
+  self.names_list.entries = {"Load", "Clear", "Move", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
   
   for _, v in ipairs(extra_param_ids) do
     table.insert(self.names_list.entries, params:lookup_param(v .. "_" .. self.sample_id).name)
@@ -899,7 +975,7 @@ local function update_setup_params(self)
   self.params_list.entries = {}
   for k, v in pairs(self.param_names) do
     local text = ""
-    if v then text = params:string(v) end
+    if v ~= "" then text = params:string(v) end
     self.params_list.entries[k] = text
   end
   
@@ -922,7 +998,10 @@ function Timber.UI.SampleSetup.new(sample_id, index)
     sample_id = sample_id or 1,
     index = index or 1,
     names_list = names_list,
-    params_list = params_list
+    params_list = params_list,
+    move_active = false,
+    copy_params_active = false,
+    move_to = 0
   }
   setmetatable(Timber.UI.SampleSetup, {__index = Timber.UI})
   setmetatable(sample_setup, Timber.UI.SampleSetup)
@@ -936,6 +1015,8 @@ function Timber.UI.SampleSetup:set_sample_id(id)
   self.sample_id = id
   update_setup_params(self)
   self.selected_param_name = self.param_names[self.index]
+  self.move_active = false
+  self.copy_params_active = false
 end
 
 function Timber.UI.SampleSetup:set_index(index)
@@ -972,35 +1053,82 @@ function Timber.UI.SampleSetup:set_param_delta(delta)
 end
 
 function Timber.UI.SampleSetup:enc(n, delta)
-  if n == 2 then
-    self:set_index(self.index + delta)
-  elseif n == 3 then
-    self:set_param_delta(delta)
+  
+  if self.move_active then
+    if n == 2 or n == 3 then
+      self.move_to = util.round(self.move_to + delta) % Timber.num_sample_params
+    end
+    
+  elseif self.copy_params_active then
+    
+  else
+    if n == 2 then
+      self:set_index(self.index + delta)
+    elseif n == 3 then
+      self:set_param_delta(delta)
+    end
   end
+  
   Timber.views_changed_callback(self.sample_id)
 end
 
 function Timber.UI.SampleSetup:key(n, z)
   if z == 1 then
-    if n == 3 then
+    
+    if self.move_active then
       
-      if self.index == 1 then
-        Timber.file_select_active = true
-        Timber.FileSelect.enter(_path.audio, function(file)
-          Timber.file_select_active = false
-          Timber.views_changed_callback(self.sample_id)
-          if file ~= "cancel" then
-            params:set("sample_" .. self.sample_id, file)
-          end
-        end)
+      if n == 2 then
+        self.move_active = false
+        self.move_to = 0
+        Timber.views_changed_callback(self.sample_id)
         
-      elseif self.index == 2 then
-        params:set("clear_" .. self.sample_id, true)
-        
-      else
-        self:set_param_default()
+      elseif n == 3 then
+        Timber.move_sample(self.sample_id, self.move_to)
+        self.move_active = false
+        self.move_to = 0
         Timber.views_changed_callback(self.sample_id)
       end
+      
+    elseif self.copy_params_active then
+      
+      if n == 2 then
+        self.copy_params_active = false
+        Timber.views_changed_callback(self.sample_id)
+        
+      elseif n == 3 then
+        Timber.copy_params(self.sample_id, 1, 2, {})
+        Timber.views_changed_callback(self.sample_id)
+      end
+      
+    else
+      
+      if n == 3 then
+        
+        if self.index == 1 then
+          Timber.file_select_active = true
+          Timber.FileSelect.enter(_path.audio, function(file)
+            Timber.file_select_active = false
+            Timber.views_changed_callback(self.sample_id)
+            if file ~= "cancel" then
+              params:set("sample_" .. self.sample_id, file)
+            end
+          end)
+          
+        elseif self.index == 2 then
+          params:set("clear_" .. self.sample_id, true)
+          
+        elseif self.index == 3 then
+          self.move_active = true
+          
+        elseif self.index == 4 then
+          self.copy_params_active = true
+          
+        else
+          self:set_param_default()
+          Timber.views_changed_callback(self.sample_id)
+        end
+      end
+      
     end
   end
 end
@@ -1012,32 +1140,53 @@ function Timber.UI.SampleSetup:redraw()
   end
   
   Timber.draw_title(self.sample_id)
+  local info = ""
   
-  if samples_meta[self.sample_id].num_frames > 0 then
+  if self.move_active then
     
-    -- Sample rate
-    local info = Formatters.format_freq_raw(samples_meta[self.sample_id].sample_rate)
+    screen.move(4, 35)
+    screen.level(3)
+    screen.text("Move")
+    screen.move(68, 35)
+    screen.level(15)
+    screen.text(string.format("%03d", self.move_to))
+    screen.fill()
     
-    -- Channels
-    if samples_meta[self.sample_id].num_channels == 1 then
-      info = info .. " mono"
-    else
-     info = info .. " stereo" 
-    end
-    
-    -- Type
-    if samples_meta[self.sample_id].streaming == 1 then
-      info = info .. " stream"
-    end
+  elseif self.copy_params_active then
     
     screen.move(4, 18)
-    screen.level(3)
-    screen.text(info)
+    screen.level(15)
+    screen.text("Copy Params")
     screen.fill()
-  end
+      
+  else
   
-  self.names_list:redraw()
-  self.params_list:redraw()
+    if samples_meta[self.sample_id].num_frames > 0 then
+      
+      -- Sample rate
+      local info = Formatters.format_freq_raw(samples_meta[self.sample_id].sample_rate)
+      
+      -- Channels
+      if samples_meta[self.sample_id].num_channels == 1 then
+        info = info .. " mono"
+      else
+       info = info .. " stereo" 
+      end
+      
+      -- Type
+      if samples_meta[self.sample_id].streaming == 1 then
+        info = info .. " stream"
+      end
+      
+      screen.move(4, 18)
+      screen.level(3)
+      screen.text(info)
+      screen.fill()
+    end
+    
+    self.names_list:redraw()
+    self.params_list:redraw()
+  end
   
 end
 
@@ -1315,7 +1464,8 @@ end
 
 function Timber.UI.FilterAmp.new(sample_id, tab_id)
   
-  local filter_graph = FilterGraph.new(10, 24000, -60, 32.5, filter_type_num_to_string(params:get("filter_type_" .. sample_id)), 12, params:get("filter_freq_" .. sample_id), params:get("filter_resonance_" .. sample_id))
+  local filter_graph = FilterGraph.new(10, 24000, -60, 32.5, filter_type_num_to_string(params:get("filter_type_" .. sample_id)), 12,
+    params:get("filter_freq_" .. sample_id), params:get("filter_resonance_" .. sample_id))
   filter_graph:set_position_and_size(4, 22, 56, 38)
   
   local pan_dial = UI.Dial.new(68.5, 21, 22, params:get("pan_" .. sample_id) * 100, -100, 100, 1, 0, {0}, nil, "Pan")
@@ -1426,7 +1576,8 @@ Timber.UI.Env = {}
 Timber.UI.Env.__index = Timber.UI.Env
 
 function Timber.UI.Env.new(env_name, sample_id, tab_id)
-  local graph = EnvGraph.new_adsr(0, 20, nil, nil, params:get(env_name .. "_env_attack_" .. sample_id), params:get(env_name .. "_env_decay_" .. sample_id), params:get(env_name .. "_env_sustain_" .. sample_id), params:get(env_name .. "_env_release_" .. sample_id), 1, -4)
+  local graph = EnvGraph.new_adsr(0, 20, nil, nil, params:get(env_name .. "_env_attack_" .. sample_id), params:get(env_name .. "_env_decay_" .. sample_id),
+    params:get(env_name .. "_env_sustain_" .. sample_id), params:get(env_name .. "_env_release_" .. sample_id), 1, -4)
   graph:set_position_and_size(57, 34, 60, 25)
   local env = {
     env_name = env_name,
@@ -1484,7 +1635,8 @@ function Timber.UI.Env:redraw()
   screen.fill()
   
   if Timber.env_dirty then
-    self.graph:edit_adsr(params:get(self.env_name .. "_env_attack_" .. self.sample_id), params:get(self.env_name .. "_env_decay_" .. self.sample_id), params:get(self.env_name .. "_env_sustain_" .. self.sample_id), params:get(self.env_name .. "_env_release_" .. self.sample_id))
+    self.graph:edit_adsr(params:get(self.env_name .. "_env_attack_" .. self.sample_id), params:get(self.env_name .. "_env_decay_" .. self.sample_id),
+      params:get(self.env_name .. "_env_sustain_" .. self.sample_id), params:get(self.env_name .. "_env_release_" .. self.sample_id))
     Timber.env_dirty = false
   end
   self.graph:redraw()
