@@ -28,6 +28,7 @@ Timber.views_changed_callback = function() end
 Timber.setup_params_dirty = false
 Timber.filter_dirty = false
 Timber.env_dirty = false
+Timber.lfo_functions_dirty = false
 Timber.lfo_1_dirty = false
 Timber.lfo_2_dirty = false
 Timber.bpm = 120
@@ -192,11 +193,13 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   params:set("original_freq_" .. id, 60)
   params:set("detune_cents_" .. id, 0)
   params:set("scale_by_" .. id, 1)
+
   update_by_bars_options(id)
   local duration = num_frames / sample_rate
   params:lookup_param("by_length_" .. id).controlspec.default = duration
   params:lookup_param("by_length_" .. id).controlspec.minval = duration * 0.1
   params:lookup_param("by_length_" .. id).controlspec.maxval = duration * 10
+  
   params:set("by_length_" .. id, duration)
   params:set("by_percentage_" .. id, specs.BY_PERCENTAGE.default)
   
@@ -312,8 +315,11 @@ function Timber.move_sample(from_id, to_id)
     Timber.play_positions_changed_callback(id)
   end
   
-  Timber.views_changed_callback(nil)
   Timber.setup_params_dirty = true
+  Timber.filter_dirty = true
+  Timber.env_dirty = true
+  Timber.lfo_functions_dirty = true
+  Timber.views_changed_callback(nil)
 end
 
 function Timber.copy_params(from_id, to_first_id, to_last_id, param_ids)
@@ -433,7 +439,6 @@ local function set_marker(id, param_prefix)
     params:lookup_param("loop_end_frame_" .. id).controlspec.maxval = last_frame
     
     -- Set loop start and end
-    
     params:set("loop_start_frame_" .. id, loop_start_frame - 1) -- Hack to make sure it gets set
     params:set("loop_start_frame_" .. id, loop_start_frame)
     params:set("loop_end_frame_" .. id, loop_end_frame + 1)
@@ -1002,7 +1007,9 @@ function Timber.UI.SampleSetup.new(sample_id, index)
     params_list = params_list,
     move_active = false,
     copy_params_active = false,
-    move_to = 0
+    move_to = 0,
+    copy_to_first = 0,
+    copy_to_last = 0
   }
   setmetatable(Timber.UI.SampleSetup, {__index = Timber.UI})
   setmetatable(sample_setup, Timber.UI.SampleSetup)
@@ -1014,8 +1021,7 @@ end
 
 function Timber.UI.SampleSetup:set_sample_id(id)
   self.sample_id = id
-  update_setup_params(self)
-  self.selected_param_name = self.param_names[self.index]
+  Timber.setup_params_dirty = true
   self.move_active = false
   self.copy_params_active = false
 end
@@ -1061,6 +1067,11 @@ function Timber.UI.SampleSetup:enc(n, delta)
     end
     
   elseif self.copy_params_active then
+    if n == 2 then
+      self.copy_to_first = util.round(self.copy_to_first + delta) % Timber.num_sample_params
+    elseif n == 3 then
+      self.copy_to_last = util.round(self.copy_to_last + delta) % Timber.num_sample_params
+    end
     
   else
     if n == 2 then
@@ -1094,11 +1105,15 @@ function Timber.UI.SampleSetup:key(n, z)
       
       if n == 2 then
         self.copy_params_active = false
+        self.copy_to_first = 0
+        self.copy_to_last = 0
         Timber.views_changed_callback(self.sample_id)
         
       elseif n == 3 then
-        Timber.copy_params(self.sample_id, 1, 2, {})
+        Timber.copy_params(self.sample_id, self.copy_to_first, self.copy_to_last, {})
         self.copy_params_active = false
+        self.copy_to_first = 0
+        self.copy_to_last = 0
         Timber.views_changed_callback(self.sample_id)
       end
       
@@ -1139,6 +1154,7 @@ function Timber.UI.SampleSetup:redraw()
   
   if Timber.setup_params_dirty then
     update_setup_params(self)
+    self.selected_param_name = self.param_names[self.index]
   end
   
   Timber.draw_title(self.sample_id)
@@ -1146,19 +1162,26 @@ function Timber.UI.SampleSetup:redraw()
   
   if self.move_active then
     
-    screen.move(4, 35)
     screen.level(3)
+    screen.move(4, 35)
     screen.text("Move")
-    screen.move(68, 35)
     screen.level(15)
+    screen.move(68, 35)
     screen.text(string.format("%03d", self.move_to))
     screen.fill()
     
   elseif self.copy_params_active then
     
-    screen.move(4, 18)
-    screen.level(15)
+    screen.level(3)
+    screen.move(4, 35)
     screen.text("Copy Params")
+    screen.level(15)
+    screen.move(68, 35)
+    screen.text(string.format("%03d", self.copy_to_first))
+    screen.move(86, 35)
+    screen.text("-")
+    screen.move(93, 35)
+    screen.text(string.format("%03d", self.copy_to_last))
     screen.fill()
       
   else
@@ -1492,9 +1515,7 @@ end
 
 function Timber.UI.FilterAmp:set_sample_id(id)
   self.sample_id = id
-  self.filter_graph:edit(filter_type_num_to_string(params:get("filter_type_" .. self.sample_id)), nil, params:get("filter_freq_" .. self.sample_id), params:get("filter_resonance_" .. self.sample_id))
-  self.pan_dial:set_value(params:get("pan_" .. self.sample_id) * 100)
-  self.amp_dial:set_value(params:get("amp_" .. self.sample_id))
+  Timber.filter_dirty = true
 end
 
 function Timber.UI.FilterAmp:set_tab(id)
@@ -1782,8 +1803,7 @@ end
 
 function Timber.UI.Lfos:set_sample_id(id)
   self.sample_id = id
-  self.lfo_1_graph:edit_function(1, generate_lfo_wave(self.sample_id, 1))
-  self.lfo_2_graph:edit_function(1, generate_lfo_wave(self.sample_id, 2))
+  Timber.lfo_functions_dirty = true
 end
 
 function Timber.UI.Lfos:set_tab(id)
@@ -1846,6 +1866,12 @@ end
 function Timber.UI.Lfos:redraw()
   
   Timber.draw_title(self.sample_id)
+  
+  if Timber.lfo_functions_dirty then
+    self.lfo_1_graph:edit_function(1, generate_lfo_wave(self.sample_id, 1))
+    self.lfo_2_graph:edit_function(1, generate_lfo_wave(self.sample_id, 2))
+    Timber.lfo_functions_dirty = false
+  end
   
   if Timber.lfo_1_dirty then
     self.lfo_1_graph:update_functions()
