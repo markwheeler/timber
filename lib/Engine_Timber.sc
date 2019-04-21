@@ -37,11 +37,15 @@ Engine_Timber : CroneEngine {
 
 	var defaultSample;
 
+	// var debugBuffer;
+
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
 	}
 
 	alloc {
+
+		// debugBuffer = Buffer.alloc(context.server, context.server.sampleRate * 4, 6);
 
 		defaultSample = (
 
@@ -133,7 +137,7 @@ Engine_Timber : CroneEngine {
 				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 
 				var signal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
-				firstFrame, lastFrame, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl;
+				firstFrame, lastFrame, loopGate, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl;
 
 				firstFrame = startFrame.min(endFrame);
 				lastFrame = startFrame.max(endFrame);
@@ -146,22 +150,23 @@ Engine_Timber : CroneEngine {
 
 				progress = (Sweep.ar(1, SampleRate.ir * rate) + i_lockedStartFrame).clip(firstFrame, lastFrame);
 
-				shouldLoop = loopEnabled * gate.max(loopInf);
+				loopGate = gate.max(loopInf);
+				shouldLoop = loopEnabled * loopGate;
 
 				inLoop = Select.ar(direction > 0, [
-					progress < (loopEndFrame - 1), // This tiny offset seems odd but avoids some clicks when phasor start changes
-					progress > (loopStartFrame + 1)
+					progress < (loopEndFrame - 40), // NOTE: This tiny offset seems odd but avoids some clicks when phasor start changes
+					progress > (loopStartFrame + 40)
 				]);
 				inLoop = PulseCount.ar(inLoop).clip * shouldLoop;
 
-				phaseStart = Select.kr(inLoop, [
-					i_lockedStartFrame,
-					loopStartFrame
+				phaseStart = Select.ar(inLoop, [
+					K2A.ar(i_lockedStartFrame),
+					K2A.ar(loopStartFrame)
 				]);
 				// Let phase run over end so it is caught by FreeSelf below. 150 is chosen to work even with drastic re-pitching.
-				phaseEnd = Select.kr(inLoop, [
-					endFrame + (BlockSize.ir * 150 * direction),
-					loopEndFrame
+				phaseEnd = Select.ar(inLoop, [
+					K2A.ar(endFrame + (BlockSize.ir * 150 * direction)),
+					K2A.ar(loopEndFrame)
 				]);
 
 				phase = Phasor.ar(trig: 0, rate: rate, start: phaseStart, end: phaseEnd, resetPos: 0);
@@ -177,7 +182,8 @@ Engine_Timber : CroneEngine {
 				signal = BufRd.ar(numChannels: i + 1, bufnum: bufnum, phase: phase, interpolation: 4);
 
 				// Duck across loop points and near start/end to avoid clicks (3ms, playback time)
-				duckDuration = 0.003 * BufSampleRate.ir(bufnum) * (freqRatio * BufRateScale.ir(bufnum)).reciprocal;
+				duckDuration = 0.003 * BufSampleRate.ir(bufnum) * freqRatio * BufRateScale.ir(bufnum);
+				duckDuration = duckDuration.min((loopEndFrame - loopStartFrame) * 0.5);
 
 				// Slighty different version of inLoop
 				inDuckLoop = Select.ar(direction > 0, [
@@ -189,6 +195,10 @@ Engine_Timber : CroneEngine {
 					K2A.ar(1),
 					phase.linlin(loopStartFrame, loopStartFrame + duckDuration, 0, 1) * phase.linlin(loopEndFrame - duckDuration, loopEndFrame, 1, 0)
 				]);
+
+				// Fade out of duck when gate releases
+				loopDuckControl = EnvGen.ar(Env.new([0, 1], [0.003], \linear, 0), loopGate).linlin(0, 1, Gate.ar(loopDuckControl, loopGate), 1);
+
 				signal = signal * loopDuckControl;
 
 				// Start (these also mute one-shots)
@@ -203,7 +213,19 @@ Engine_Timber : CroneEngine {
 					phase.linlin(lastFrame - duckDuration, lastFrame, 1, 0)
 				]);
 
-				signal = signal * startEndDuckControl.max(inLoop);
+				startEndDuckControl = startEndDuckControl.max(inLoop);
+
+				// Debug buffer
+				/*BufWr.ar([
+					phase.linlin(firstFrame, lastFrame, 0, 1),
+					loopDuckControl,
+					startEndDuckControl,
+					K2A.ar(gate),
+					inLoop,
+					phaseEnd.linlin(firstFrame - 150, lastFrame + 150, 0, 1),
+				], debugBuffer.bufnum, Phasor.ar(1, 1, 0, debugBuffer.numFrames), 0);*/
+
+				signal = signal * startEndDuckControl;
 			};
 		});
 
@@ -949,6 +971,8 @@ Engine_Timber : CroneEngine {
 			var voiceId = msg[1], sampleId = msg[2], freq = msg[3], vel = msg[4],
 			sample = samples[sampleId];
 
+			// debugBuffer.zero();
+
 			if(sample.notNil, {
 				this.assignVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
 			});
@@ -1089,6 +1113,12 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\moveSample, "ii", {
 			arg msg;
 			this.moveSample(msg[1], msg[2]);
+		});
+
+		this.addCommand(\copyParams, "ii", {
+			arg msg;
+			// this.copyParams(msg[1], msg[2]); //TODO
+			// debugBuffer.write('/home/we/dust/code/timber/lib/debug.wav');
 		});
 
 		this.addCommand(\originalFreq, "if", {

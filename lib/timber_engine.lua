@@ -319,6 +319,7 @@ end
 function Timber.copy_params(from_id, to_first_id, to_last_id, param_ids)
   
   --TODO
+  engine.copyParams(from_id, to_first_id)
   
   Timber.views_changed_callback(nil)
   Timber.setup_params_dirty = true
@@ -1097,6 +1098,7 @@ function Timber.UI.SampleSetup:key(n, z)
         
       elseif n == 3 then
         Timber.copy_params(self.sample_id, 1, 2, {})
+        self.copy_params_active = false
         Timber.views_changed_callback(self.sample_id)
       end
       
