@@ -1,5 +1,5 @@
 -- Timber Keys
--- 1.0.0 Beta 1 @markeats
+-- 1.0.0 Beta 2 @markeats
 -- llllllll.co/t/timber
 --
 -- Map samples across a
@@ -366,14 +366,17 @@ function init()
   -- Callbacks
   Timber.sample_changed_callback = function(id)
     
-    -- Set our own loop point defaults
-    params:set("loop_start_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.2))
-    params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.5))
-    
-    -- Set env defaults
-    params:set("amp_env_attack_" .. id, 0.01)
-    params:set("amp_env_sustain_" .. id, 0.8)
-    params:set("amp_env_release_" .. id, 0.4)
+    if Timber.samples_meta[id].manual_load then
+      
+      -- Set our own loop point defaults
+      params:set("loop_start_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.2))
+      params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.5))
+      
+      -- Set env defaults
+      params:set("amp_env_attack_" .. id, 0.01)
+      params:set("amp_env_sustain_" .. id, 0.8)
+      params:set("amp_env_release_" .. id, 0.4)
+    end
     
     callback_set_screen_dirty(id)
   end
@@ -402,7 +405,7 @@ function init()
   end
   
   -- Default sample
-  params:set("sample_0", "/home/we/dust/code/timber/audio/piano-c.wav")
+  Timber.load_sample(0, _path.code .. "/timber/audio/piano-c.wav")
   
   -- UI
   
