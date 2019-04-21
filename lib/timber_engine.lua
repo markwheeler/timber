@@ -1020,8 +1020,6 @@ local function update_setup_params(self)
     "",
     "",
     "",
-    "",
-    "",
     "quality_" .. self.sample_id,
     "original_freq_" .. self.sample_id,
     "detune_cents_" .. self.sample_id,
@@ -1029,7 +1027,7 @@ local function update_setup_params(self)
     scale
   }
   
-  self.names_list.entries = {"Load", "Clear", "Move", "Copy", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
+  self.names_list.entries = {"Load", "Clear", "Move", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
   
   for _, v in ipairs(extra_param_ids) do
     table.insert(self.names_list.entries, params:lookup_param(v .. "_" .. self.sample_id).name)
@@ -1213,11 +1211,11 @@ function Timber.UI.SampleSetup:key(n, z)
         elseif self.index == 3 then
           self.move_active = true
           
-        elseif self.index == 4 then
-          self.copy_active = true
+        -- elseif self.index == 4 then
+        --   self.copy_active = true
           
-        elseif self.index == 5 then
-          self.copy_params_active = true
+        -- elseif self.index == 5 then
+        --   self.copy_params_active = true
           
         else
           self:set_param_default()
