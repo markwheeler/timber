@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 1 Mark Eats
+// v1.0.0 Beta 2 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -45,7 +45,7 @@ Engine_Timber : CroneEngine {
 
 	alloc {
 
-		// debugBuffer = Buffer.alloc(context.server, context.server.sampleRate * 4, 6);
+		// debugBuffer = Buffer.alloc(context.server, context.server.sampleRate * 4, 5);
 
 		defaultSample = (
 
@@ -137,7 +137,7 @@ Engine_Timber : CroneEngine {
 				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 
 				var signal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
-				firstFrame, lastFrame, loopGate, shouldLoop, inLoop, inDuckLoop, loopEnabled, loopInf, duckDuration, duckLoop, loopDuckControl, startEndDuckControl;
+				firstFrame, lastFrame, shouldLoop, inLoop, loopEnabled, loopInf, duckDuration, duckNumFrames, duckNumFramesShortened, duckGate, duckControl;
 
 				firstFrame = startFrame.min(endFrame);
 				lastFrame = startFrame.max(endFrame);
@@ -150,8 +150,7 @@ Engine_Timber : CroneEngine {
 
 				progress = (Sweep.ar(1, SampleRate.ir * rate) + i_lockedStartFrame).clip(firstFrame, lastFrame);
 
-				loopGate = gate.max(loopInf);
-				shouldLoop = loopEnabled * loopGate;
+				shouldLoop = loopEnabled * gate.max(loopInf);
 
 				inLoop = Select.ar(direction > 0, [
 					progress < (loopEndFrame - 40), // NOTE: This tiny offset seems odd but avoids some clicks when phasor start changes
@@ -181,51 +180,45 @@ Engine_Timber : CroneEngine {
 
 				signal = BufRd.ar(numChannels: i + 1, bufnum: bufnum, phase: phase, interpolation: 4);
 
-				// Duck across loop points and near start/end to avoid clicks (3ms, playback time)
-				duckDuration = 0.003 * BufSampleRate.ir(bufnum) * freqRatio * BufRateScale.ir(bufnum);
-				duckDuration = duckDuration.min((loopEndFrame - loopStartFrame) * 0.5);
-
-				// Slighty different version of inLoop
-				inDuckLoop = Select.ar(direction > 0, [
-					progress <= (loopEndFrame - duckDuration),
-					progress >= (loopStartFrame + duckDuration)
-				]) * shouldLoop;
-
-				loopDuckControl = Select.ar(inDuckLoop, [
-					K2A.ar(1),
-					phase.linlin(loopStartFrame, loopStartFrame + duckDuration, 0, 1) * phase.linlin(loopEndFrame - duckDuration, loopEndFrame, 1, 0)
-				]);
-
-				// Fade out of duck when gate releases
-				loopDuckControl = EnvGen.ar(Env.new([0, 1], [0.003], \linear, 0), loopGate).linlin(0, 1, Gate.ar(loopDuckControl, loopGate), 1);
-
-				signal = signal * loopDuckControl;
+				// Duck across loop points and near start/end to avoid clicks (3ms * 2, playback time)
+				duckDuration = 0.003;
+				duckNumFrames = duckDuration * BufSampleRate.ir(bufnum) * freqRatio * BufRateScale.ir(bufnum);
 
 				// Start (these also mute one-shots)
-				startEndDuckControl = Select.ar(firstFrame > 0, [
+				duckControl = Select.ar(firstFrame > 0, [
 					phase.linlin(firstFrame, firstFrame + 1, 0, 1),
-					phase.linlin(firstFrame, firstFrame + duckDuration, 0, 1)
+					phase.linlin(firstFrame, firstFrame + duckNumFrames, 0, 1)
 				]);
 
 				// End
-				startEndDuckControl = startEndDuckControl * Select.ar(lastFrame < numFrames, [
+				duckControl = duckControl * Select.ar(lastFrame < numFrames, [
 					phase.linlin(lastFrame - 1, lastFrame, 1, 0),
-					phase.linlin(lastFrame - duckDuration, lastFrame, 1, 0)
+					phase.linlin(lastFrame - duckNumFrames, lastFrame, 1, 0)
 				]);
 
-				startEndDuckControl = startEndDuckControl.max(inLoop);
+				duckControl = duckControl.max(inLoop);
+
+				duckNumFramesShortened = duckNumFrames.min((loopEndFrame - loopStartFrame) * 0.45);
+				duckDuration = (duckNumFramesShortened / duckNumFrames) * duckDuration;
+				duckNumFrames = duckNumFramesShortened;
+
+				duckGate = Select.ar(direction > 0, [
+					InRange.ar(phase, loopStartFrame, loopStartFrame + duckNumFrames),
+					InRange.ar(phase, loopEndFrame - duckNumFrames, loopEndFrame)
+				]) * inLoop;
+
+				duckControl = duckControl * EnvGen.ar(Env.new([1, 0, 1], [A2K.kr(duckDuration)], \linear, nil, nil), duckGate);
 
 				// Debug buffer
 				/*BufWr.ar([
 					phase.linlin(firstFrame, lastFrame, 0, 1),
-					loopDuckControl,
-					startEndDuckControl,
+					duckControl,
 					K2A.ar(gate),
 					inLoop,
-					phaseEnd.linlin(firstFrame - 150, lastFrame + 150, 0, 1),
+					duckGate,
 				], debugBuffer.bufnum, Phasor.ar(1, 1, 0, debugBuffer.numFrames), 0);*/
 
-				signal = signal * startEndDuckControl;
+				signal = signal * duckControl;
 			};
 		});
 
@@ -234,7 +227,7 @@ Engine_Timber : CroneEngine {
 			arg i;
 			players[i + 2] = {
 				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
-				var signal, rate, progress, loopEnabled, oneShotActive, duckDuration, startEndDuckControl;
+				var signal, rate, progress, loopEnabled, oneShotActive, duckDuration, duckControl;
 
 				loopEnabled = InRange.kr(playMode, 0, 1);
 
@@ -251,19 +244,19 @@ Engine_Timber : CroneEngine {
 				duckDuration = 0.003 * sampleRate * rate.reciprocal;
 
 				// Start
-				startEndDuckControl = Select.ar(i_lockedStartFrame > 0, [
+				duckControl = Select.ar(i_lockedStartFrame > 0, [
 					K2A.ar(1),
 					progress.linlin(i_lockedStartFrame, i_lockedStartFrame + duckDuration, 0, 1) + (progress < i_lockedStartFrame)
 				]);
 
 				// End
-				startEndDuckControl = startEndDuckControl * Select.ar(endFrame < numFrames, [
+				duckControl = duckControl * Select.ar(endFrame < numFrames, [
 					progress.linlin(endFrame, endFrame + 1, 1, loopEnabled),
 					progress.linlin(endFrame - duckDuration, endFrame, 1, loopEnabled)
 				]);
 
 				// Duck at end of stream if loop is enabled and startFrame > 0
-				startEndDuckControl = startEndDuckControl * Select.ar(loopEnabled * (i_lockedStartFrame > 0), [
+				duckControl = duckControl * Select.ar(loopEnabled * (i_lockedStartFrame > 0), [
 					K2A.ar(1),
 					progress.linlin(numFrames - duckDuration, numFrames, 1, 0)
 				]);
@@ -271,7 +264,7 @@ Engine_Timber : CroneEngine {
 				// One shot freer
 				FreeSelf.kr((progress >= endFrame) * (1 - loopEnabled));
 
-				signal = signal * startEndDuckControl;
+				signal = signal * duckControl;
 			};
 		});
 
