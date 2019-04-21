@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 1 @markeats
+-- 1.0.0 Beta 2 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
@@ -108,7 +108,7 @@ local function load_folder(file, add)
       -- Check file type
       local lower_v = v:lower()
       if string.find(lower_v, ".wav") or string.find(lower_v, ".aif") or string.find(lower_v, ".aiff") then
-        params:set("sample_" .. sample_id, folder .. v)
+        Timber.load_sample(sample_id, folder .. v)
         sample_id = sample_id + 1
       else
         print("Skipped", v)
@@ -748,7 +748,7 @@ function init()
   Timber.sample_changed_callback = function(id)
     
     -- Set loop default based on sample length or name
-    if Timber.samples_meta[id].streaming == 0 and Timber.samples_meta[id].num_frames / Timber.samples_meta[id].sample_rate < 1 and string.find(string.lower(params:get("sample_" .. id)), "loop") == nil then
+    if Timber.samples_meta[id].manual_load and Timber.samples_meta[id].streaming == 0 and Timber.samples_meta[id].num_frames / Timber.samples_meta[id].sample_rate < 1 and string.find(string.lower(params:get("sample_" .. id)), "loop") == nil then
       params:set("play_mode_" .. id, 3) -- One shot
     end
     

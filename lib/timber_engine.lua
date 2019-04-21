@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 1
+-- @release v1.0.0 Beta 2
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -41,6 +41,7 @@ local specs = {}
 local options = {}
 
 local STREAMING_BUFFER_SIZE = 65536
+local MAX_FRAMES = 2000000000
 
 Timber.specs = specs
 Timber.options = options
@@ -71,6 +72,8 @@ options.SCALE_BY_NO_BARS = {"Percentage", "Length"}
 specs.BY_PERCENTAGE = ControlSpec.new(10, 500, "lin", 0, 100, "%")
 
 options.BY_BARS = {"1/64", "1/48", "1/32", "1/24", "1/16", "1/12", "1/8", "1/6", "1/4", "1/3", "1/2", "2/3", "3/4", "1 bar"}
+options.BY_BARS_NA = {}
+for i = 1, #options.BY_BARS do table.insert(options.BY_BARS_NA, "N/A") end
 options.BY_BARS_DECIMAL = {1/64, 1/48, 1/32, 1/24, 1/16, 1/12, 1/8, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1}
 for i = 2, 32 do
   table.insert(options.BY_BARS, i .. " bars")
@@ -101,6 +104,7 @@ QUALITY_BIT_DEPTHS = {8, 10, 12, 24}
 
 local function default_sample()
   local sample = {
+    manual_load = false,
     streaming = 0,
     num_frames = 0,
     num_channels = 0,
@@ -142,14 +146,15 @@ local function update_by_bars_options(sample_id)
     local param = params:lookup_param("by_bars_" .. sample_id)
     if params:get("scale_by_" .. sample_id) == 3 then
       param.options = options.BY_BARS
-      param.count = #options.BY_BARS
-      params:set("by_bars_" .. sample_id, 14)
     else
-      param.options = {"N/A"}
-      param.count = 1
-      params:set("by_bars_" .. sample_id, 1)
+      param.options = options.BY_BARS_NA
     end
   end
+end
+
+function Timber.load_sample(id, file)
+  samples_meta[id].manual_load = true
+  params:set("sample_" .. id, file)
 end
 
 local function sample_loaded(id, streaming, num_frames, num_channels, sample_rate)
@@ -163,6 +168,10 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   samples_meta[id].positions = {}
   samples_meta[id].waveform = {}
   
+  local start_frame = params:get("start_frame_" .. id)
+  local end_frame = params:get("end_frame_" .. id)
+  local by_length = params:get("by_length_" .. id)
+  
   local start_frame_max = num_frames
   if streaming == 1 then
     start_frame_max = start_frame_max - STREAMING_BUFFER_SIZE
@@ -174,34 +183,47 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   if streaming == 0 then
     play_mode_param.options = options.PLAY_MODE_BUFFER
     play_mode_param.count = #options.PLAY_MODE_BUFFER
-    params:set("play_mode_" .. id, options.PLAY_MODE_BUFFER_DEFAULT)
   else
     play_mode_param.options = options.PLAY_MODE_STREAMING
     play_mode_param.count = #options.PLAY_MODE_STREAMING
-    params:set("play_mode_" .. id, options.PLAY_MODE_STREAMING_DEFAULT)
   end
   
-  params:set("start_frame_" .. id, 1) -- Odd little hack to make sure it actually gets set
-  params:set("start_frame_" .. id, 0)
-  params:set("end_frame_" .. id, 1)
-  params:set("end_frame_" .. id, num_frames)
-  params:set("loop_start_frame_" .. id, 1)
-  params:set("loop_start_frame_" .. id, 0)
-  params:set("loop_end_frame_" .. id, 1)
-  params:set("loop_end_frame_" .. id, num_frames)
-  
-  params:set("original_freq_" .. id, 60)
-  params:set("detune_cents_" .. id, 0)
-  params:set("scale_by_" .. id, 1)
-
   update_by_bars_options(id)
   local duration = num_frames / sample_rate
   params:lookup_param("by_length_" .. id).controlspec.default = duration
   params:lookup_param("by_length_" .. id).controlspec.minval = duration * 0.1
   params:lookup_param("by_length_" .. id).controlspec.maxval = duration * 10
   
-  params:set("by_length_" .. id, duration)
-  params:set("by_percentage_" .. id, specs.BY_PERCENTAGE.default)
+  -- Set defaults
+  if samples_meta[id].manual_load then
+    if streaming == 0 then
+      params:set("play_mode_" .. id, options.PLAY_MODE_BUFFER_DEFAULT)
+    else
+      params:set("play_mode_" .. id, options.PLAY_MODE_STREAMING_DEFAULT)
+    end
+    
+    params:set("start_frame_" .. id, 1) -- Odd little hack to make sure it actually gets set
+    params:set("start_frame_" .. id, 0)
+    params:set("end_frame_" .. id, 1)
+    params:set("end_frame_" .. id, num_frames)
+    params:set("loop_start_frame_" .. id, 1)
+    params:set("loop_start_frame_" .. id, 0)
+    params:set("loop_end_frame_" .. id, 1)
+    params:set("loop_end_frame_" .. id, num_frames)
+    
+    params:set("original_freq_" .. id, 60)
+    params:set("detune_cents_" .. id, 0)
+    params:set("scale_by_" .. id, 1)
+    params:set("by_length_" .. id, duration)
+    params:set("by_percentage_" .. id, specs.BY_PERCENTAGE.default)
+    if beat_params then params:set("by_bars_" .. id, 14) end
+    
+  else
+    -- These need resetting after having their ControlSpecs altered
+    params:set("start_frame_" .. id, start_frame)
+    params:set("end_frame_" .. id, end_frame)
+    params:set("by_length_" .. id, by_length)
+  end
   
   waveform_last_edited = nil
   lfos_last_edited = nil
@@ -210,6 +232,8 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   Timber.meta_changed_callback(id)
   Timber.waveform_changed_callback(id)
   Timber.play_positions_changed_callback(id)
+  
+  samples_meta[id].manual_load = false
 end
 
 local function sample_load_failed(id, error_status)
@@ -224,6 +248,8 @@ local function sample_load_failed(id, error_status)
   Timber.meta_changed_callback(id)
   Timber.waveform_changed_callback(id)
   Timber.play_positions_changed_callback(id)
+  
+  samples_meta[id].manual_load = false
 end
 
 function Timber.clear_samples(first, last)
@@ -669,8 +695,24 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   
   params:add{type = "file", id = "sample_" .. id, name = name_prefix .. "Sample", action = function(value)
     if samples_meta[id].num_frames > 0 or value ~= "-" then
+      
+      -- Set some large defaults in case a pset load is about to try and set all these
+      params:lookup_param("start_frame_" .. id).controlspec.maxval = MAX_FRAMES
+      params:lookup_param("end_frame_" .. id).controlspec.maxval = MAX_FRAMES
+      params:lookup_param("loop_start_frame_" .. id).controlspec.maxval = MAX_FRAMES
+      params:set("loop_start_frame_" .. id, 0)
+      params:lookup_param("loop_end_frame_" .. id).controlspec.maxval = MAX_FRAMES
+      params:set("loop_end_frame_" .. id, MAX_FRAMES)
+      params:lookup_param("by_length_" .. id).controlspec.minval = 0
+      params:lookup_param("by_length_" .. id).controlspec.maxval = 100000
+      local play_mode_param = params:lookup_param("play_mode_" .. id)
+      play_mode_param.options = options.PLAY_MODE_BUFFER
+      play_mode_param.count = #options.PLAY_MODE_BUFFER
+      
       engine.loadSample(id, value)
       Timber.views_changed_callback(id)
+    else
+      samples_meta[id].manual_load = false
     end
   end}
   params:add{type = "trigger", id = "clear_" .. id, name = "Clear", action = function(value)
@@ -717,7 +759,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   end}
   
   if include_beat_params then
-    params:add{type = "option", id = "by_bars_" .. id, name = "Bars", options = {"N/A"}, action = function(value)
+    params:add{type = "option", id = "by_bars_" .. id, name = "Bars", options = options.BY_BARS_NA, action = function(value)
       update_freq_multiplier(id)
       Timber.views_changed_callback(id)
       Timber.setup_params_dirty = true
@@ -742,23 +784,23 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     waveform_last_edited = {id = id}
     Timber.views_changed_callback(id)
   end}
-  params:add{type = "control", id = "start_frame_" .. id, name = "Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
+  params:add{type = "control", id = "start_frame_" .. id, name = "Start", controlspec = ControlSpec.new(0, MAX_FRAMES, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
     set_marker(id, "start_frame_")
   end}
-  params:add{type = "control", id = "end_frame_" .. id, name = "End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0), formatter = format_frame_number(id), action = function(value)
+  params:add{type = "control", id = "end_frame_" .. id, name = "End", controlspec = ControlSpec.new(0, MAX_FRAMES, "lin", 1, MAX_FRAMES), formatter = format_frame_number(id), action = function(value)
     set_marker(id, "end_frame_")
   end}
-  params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, 0, "lin", 1, 0),
-    formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
+  params:add{type = "control", id = "loop_start_frame_" .. id, name = "Loop Start", controlspec = ControlSpec.new(0, MAX_FRAMES, "lin", 1, 0),
+  formatter = format_hide_for_stream(id, "loop_start_frame_" .. id, format_frame_number(id)), action = function(value)
     set_marker(id, "loop_start_frame_")
   end}
-  params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, 0, "lin", 1, 0),
-    formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
+  params:add{type = "control", id = "loop_end_frame_" .. id, name = "Loop End", controlspec = ControlSpec.new(0, MAX_FRAMES, "lin", 1, MAX_FRAMES),
+  formatter = format_hide_for_stream(id, "loop_end_frame_" .. id, format_frame_number(id)), action = function(value)
     set_marker(id, "loop_end_frame_")
   end}
   
   params:add_separator()
-
+  
   params:add{type = "control", id = "freq_mod_lfo_1_" .. id, name = "Freq Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
     engine.freqModLfo1(id, value)
     Timber.views_changed_callback(id)
@@ -1161,7 +1203,7 @@ function Timber.UI.SampleSetup:key(n, z)
             Timber.file_select_active = false
             Timber.views_changed_callback(self.sample_id)
             if file ~= "cancel" then
-              params:set("sample_" .. self.sample_id, file)
+              Timber.load_sample(self.sample_id, file)
             end
           end)
           
