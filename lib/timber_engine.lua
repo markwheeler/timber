@@ -322,13 +322,28 @@ function Timber.move_sample(from_id, to_id)
   Timber.views_changed_callback(nil)
 end
 
+function Timber.copy_samples(from_id, to_first_id, to_last_id)
+  
+  --TODO
+  engine.copySample(from_id, to_first_id)
+  
+  Timber.setup_params_dirty = true
+  Timber.filter_dirty = true
+  Timber.env_dirty = true
+  Timber.lfo_functions_dirty = true
+  Timber.views_changed_callback(nil)
+end
+
 function Timber.copy_params(from_id, to_first_id, to_last_id, param_ids)
   
   --TODO
   engine.copyParams(from_id, to_first_id)
   
-  Timber.views_changed_callback(nil)
   Timber.setup_params_dirty = true
+  Timber.filter_dirty = true
+  Timber.env_dirty = true
+  Timber.lfo_functions_dirty = true
+  Timber.views_changed_callback(nil)
 end
 
 local function store_waveform(id, offset, padding, waveform_blob)
@@ -964,6 +979,7 @@ local function update_setup_params(self)
     "",
     "",
     "",
+    "",
     "quality_" .. self.sample_id,
     "original_freq_" .. self.sample_id,
     "detune_cents_" .. self.sample_id,
@@ -971,7 +987,7 @@ local function update_setup_params(self)
     scale
   }
   
-  self.names_list.entries = {"Load", "Clear", "Move", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
+  self.names_list.entries = {"Load", "Clear", "Move", "Copy", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
   
   for _, v in ipairs(extra_param_ids) do
     table.insert(self.names_list.entries, params:lookup_param(v .. "_" .. self.sample_id).name)
@@ -1006,6 +1022,7 @@ function Timber.UI.SampleSetup.new(sample_id, index)
     names_list = names_list,
     params_list = params_list,
     move_active = false,
+    copy_active = false,
     copy_params_active = false,
     move_to = 0,
     copy_to_first = 0,
@@ -1023,6 +1040,7 @@ function Timber.UI.SampleSetup:set_sample_id(id)
   self.sample_id = id
   Timber.setup_params_dirty = true
   self.move_active = false
+  self.copy_active = false
   self.copy_params_active = false
 end
 
@@ -1066,7 +1084,7 @@ function Timber.UI.SampleSetup:enc(n, delta)
       self.move_to = util.round(self.move_to + delta) % Timber.num_sample_params
     end
     
-  elseif self.copy_params_active then
+  elseif self.copy_active or self.copy_params_active then
     if n == 2 then
       self.copy_to_first = util.round(self.copy_to_first + delta) % Timber.num_sample_params
     elseif n == 3 then
@@ -1098,6 +1116,22 @@ function Timber.UI.SampleSetup:key(n, z)
         Timber.move_sample(self.sample_id, self.move_to)
         self.move_active = false
         self.move_to = 0
+        Timber.views_changed_callback(self.sample_id)
+      end
+      
+    elseif self.copy_active then
+      
+      if n == 2 then
+        self.copy_active = false
+        self.copy_to_first = 0
+        self.copy_to_last = 0
+        Timber.views_changed_callback(self.sample_id)
+        
+      elseif n == 3 then
+        Timber.copy_samples(self.sample_id, self.copy_to_first, self.copy_to_last)
+        self.copy_active = false
+        self.copy_to_first = 0
+        self.copy_to_last = 0
         Timber.views_changed_callback(self.sample_id)
       end
       
@@ -1138,6 +1172,9 @@ function Timber.UI.SampleSetup:key(n, z)
           self.move_active = true
           
         elseif self.index == 4 then
+          self.copy_active = true
+          
+        elseif self.index == 5 then
           self.copy_params_active = true
           
         else
@@ -1170,11 +1207,15 @@ function Timber.UI.SampleSetup:redraw()
     screen.text(string.format("%03d", self.move_to))
     screen.fill()
     
-  elseif self.copy_params_active then
+  elseif self.copy_active or self.copy_params_active then
     
     screen.level(3)
     screen.move(4, 35)
-    screen.text("Copy Params")
+    if self.copy_active then
+      screen.text("Copy")
+    else
+      screen.text("Copy Params")
+    end
     screen.level(15)
     screen.move(68, 35)
     screen.text(string.format("%03d", self.copy_to_first))
