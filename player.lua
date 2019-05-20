@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 2 @markeats
+-- 1.0.0 Beta 3 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
@@ -139,6 +139,7 @@ end
 
 local function note_on(sample_id, vel)
   if Timber.samples_meta[sample_id].num_frames > 0 then
+    -- print("note_on", sample_id)
     vel = vel or 1
     engine.noteOn(sample_id, sample_id, MusicUtil.note_num_to_freq(60), vel)
     sample_status[sample_id] = STATUS.PLAYING
@@ -149,6 +150,7 @@ local function note_on(sample_id, vel)
 end
 
 local function note_off(sample_id)
+  -- print("note_off", sample_id)
   engine.noteOff(sample_id)
   screen_dirty = true
   grid_dirty = true
@@ -255,6 +257,11 @@ local function set_pitch_bend_all(bend_st)
 end
 
 local function key_down(sample_id, vel)
+  
+  if pages.index == 2 then
+    sample_setup_view:sample_key(sample_id)
+  end
+  
   if params:get("launch_mode_" .. sample_id) == 1 then
     queue_note_event("on", sample_id, vel)
     
@@ -266,9 +273,6 @@ local function key_down(sample_id, vel)
     end
   end
   
-  if params:get("follow") == 2 then
-    set_sample_id(sample_id)
-  end
 end
 
 local function key_up(sample_id)
@@ -401,6 +405,10 @@ local function midi_event(device_id, data)
       elseif msg.type == "note_on" then
         key_down(msg.note, msg.vel / 127)
         
+        if params:get("follow") >= 3 then
+          set_sample_id(msg.note)
+        end
+        
       -- Key pressure
       elseif msg.type == "key_pressure" then
         set_pressure_voice(msg.note, msg.val / 127)
@@ -442,6 +450,9 @@ local function grid_key(x, y, z)
   local sample_id = (y - 1) * grid_w + x - 1
   if z == 1 then
     key_down(sample_id)
+    if params:get("follow") == 2 or params:get("follow") == 4 then
+      set_sample_id(sample_id)
+    end
   else
     key_up(sample_id)
   end
@@ -807,7 +818,12 @@ function init()
     
   params:add{type = "number", id = "bend_range", name = "Pitch Bend Range", min = 1, max = 48, default = 2}
   
-  params:add{type = "option", id = "follow", name = "Follow", options = options.OFF_ON, default = 2}
+  params:add{type = "option", id = "follow", name = "Follow", options = {"Off", "Grid", "MIDI", "Both"}, default = 4}
+  
+  params:add{type = "option", id = "display", name = "Display", options = {"IDs", "Notes"}, default = 1, action = function(value)
+    if value == 1 then Timber.display = "id"
+    else Timber.display = "note" end
+  end}
   
   params:add_separator()
   

@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 2 Mark Eats
+// v1.0.0 Beta 3 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -128,7 +128,7 @@ Engine_Timber : CroneEngine {
 		}, path: '/replyPlayPosition', srcID: context.server.addr);
 
 		// Sample defaults
-		samples = Array.fill(maxSamples, { defaultSample.copy; });
+		samples = Array.fill(maxSamples, { defaultSample.deepCopy; });
 
 		// Buffer players
 		2.do({
@@ -208,6 +208,8 @@ Engine_Timber : CroneEngine {
 				]) * inLoop;
 
 				duckControl = duckControl * EnvGen.ar(Env.new([1, 0, 1], [A2K.kr(duckDuration)], \linear, nil, nil), duckGate);
+
+				// duckControl.poll(8, "duckControl");
 
 				// Debug buffer
 				/*BufWr.ar([
@@ -332,6 +334,10 @@ Engine_Timber : CroneEngine {
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
 
+				// gate.poll(8, "gate");
+				// killGate.poll(8, "killGate");
+				// ampEnvelope.poll(8, "ampEnvelope");
+
 				// Freq modulation
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
 				freq = freq * detuneRatio;
@@ -453,10 +459,58 @@ Engine_Timber : CroneEngine {
 		arg fromId, toId;
 		var fromSample = samples[fromId];
 
-		this.killVoicesPlaying(fromId);
-		this.killVoicesPlaying(toId);
-		samples[fromId] = samples[toId];
-		samples[toId] = fromSample;
+		if(fromId != toId, {
+			this.killVoicesPlaying(fromId);
+			this.killVoicesPlaying(toId);
+			samples[fromId] = samples[toId];
+			samples[toId] = fromSample;
+		});
+	}
+
+	copySample {
+		arg fromId, toFirstId, toLastId;
+
+		for(toFirstId, toLastId, {
+			arg i;
+			if(fromId != i, {
+				this.killVoicesPlaying(fromId);
+				this.killVoicesPlaying(i);
+				samples[i] = samples[fromId].deepCopy;
+			});
+		});
+	}
+
+	copyParams {
+		arg fromId, toFirstId, toLastId;
+
+		for(toFirstId, toLastId, {
+			arg i;
+			var newSample;
+
+			if((fromId != i).and(samples[i].numFrames > 0), {
+				this.killVoicesPlaying(fromId);
+				this.killVoicesPlaying(i);
+
+				// Copies all except play mode and marker positions
+				newSample = samples[fromId].deepCopy;
+
+				newSample.streaming = samples[i].streaming;
+				newSample.buffer = samples[i].buffer;
+				newSample.path = samples[i].path;
+
+				newSample.channels = samples[i].channels;
+				newSample.sampleRate = samples[i].sampleRate;
+				newSample.numFrames = samples[i].numFrames;
+
+				newSample.startFrame = samples[i].startFrame;
+				newSample.endFrame = samples[i].endFrame;
+				newSample.playMode = samples[i].playMode;
+				newSample.loopStartFrame = samples[i].loopStartFrame;
+				newSample.loopEndFrame = samples[i].loopEndFrame;
+
+				samples[i] = newSample;
+			});
+		});
 	}
 
 	loadFailed {
@@ -495,9 +549,9 @@ Engine_Timber : CroneEngine {
 						this.loadSample();
 					}, {
 
-						// 1 sec then timeout and move to next one
+						// 2 sec then timeout and move to next one
 						timeoutRoutine = Routine.new({
-							1.yield;
+							2.yield;
 							this.loadFailed(sampleId, "Loading timed out");
 							this.loadSample();
 						}).play;
@@ -597,7 +651,7 @@ Engine_Timber : CroneEngine {
 
 				this.clearBuffer(i);
 
-				samples[i] = defaultSample.copy;
+				samples[i] = defaultSample.deepCopy;
 			});
 
 		});
@@ -1108,15 +1162,22 @@ Engine_Timber : CroneEngine {
 			this.moveSample(msg[1], msg[2]);
 		});
 
-		this.addCommand(\copyParams, "ii", {
+		this.addCommand(\copySample, "iii", {
 			arg msg;
-			// this.copyParams(msg[1], msg[2]); //TODO
-			// debugBuffer.write('/home/we/dust/code/timber/lib/debug.wav');
+			this.copySample(msg[1], msg[2], msg[3]);
+		});
+
+		this.addCommand(\copyParams, "iii", {
+			arg msg;
+			this.copyParams(msg[1], msg[2], msg[3]);
 		});
 
 		this.addCommand(\originalFreq, "if", {
 			arg msg;
 			this.setArgOnSample(msg[1], \originalFreq, msg[2]);
+
+			// TODO
+			// debugBuffer.write('/home/we/dust/code/timber/lib/debug.wav');
 		});
 
 		this.addCommand(\detuneCents, "if", {

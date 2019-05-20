@@ -1,5 +1,5 @@
 -- Timber Keys
--- 1.0.0 Beta 2 @markeats
+-- 1.0.0 Beta 3 @markeats
 -- llllllll.co/t/timber
 --
 -- Map samples across a
@@ -204,6 +204,11 @@ local function midi_event(data)
   
   -- Note on
   elseif msg.type == "note_on" then
+    
+    if pages.index == 2 then
+      sample_setup_view:sample_key(sample_id)
+    end
+    
     note_on(voice_id, sample_id, MusicUtil.note_num_to_freq(msg.note), msg.vel / 127)
     -- print("note on", msg.note, msg.vel, voice_id, sample_id)
     
