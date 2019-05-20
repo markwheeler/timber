@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 2
+-- @release v1.0.0 Beta 3
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -32,7 +32,7 @@ Timber.lfo_functions_dirty = false
 Timber.lfo_1_dirty = false
 Timber.lfo_2_dirty = false
 Timber.bpm = 120
-Timber.show_id = true
+Timber.display = "id" -- Can be "id", "note" or "none"
 Timber.shift_mode = false
 Timber.file_select_active = false
 
@@ -152,6 +152,15 @@ local function update_by_bars_options(sample_id)
   end
 end
 
+local function set_play_mode(id, play_mode)
+  engine.playMode(id, play_mode)
+  if samples_meta[id].streaming == 1 then
+    local start_frame = params:get("start_frame_" .. id)
+    params:set("start_frame_" .. id, start_frame - 1)
+    params:set("start_frame_" .. id, start_frame)
+  end
+end
+
 function Timber.load_sample(id, file)
   samples_meta[id].manual_load = true
   params:set("sample_" .. id, file)
@@ -223,6 +232,8 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
     params:set("start_frame_" .. id, start_frame)
     params:set("end_frame_" .. id, end_frame)
     params:set("by_length_" .. id, by_length)
+    
+    set_play_mode(id, lookup_play_mode(id))
   end
   
   waveform_last_edited = nil
@@ -291,12 +302,64 @@ function Timber.clear_samples(first, last)
   Timber.setup_params_dirty = true
 end
 
-local function copy_param(from_param, to_param)
+local function update_freq_multiplier(sample_id)
+  
+  local scale_by = params:get("scale_by_" .. sample_id)
+  local multiplier = 1
+  local sample_duration = math.abs(params:get("end_frame_" .. sample_id) - params:get("start_frame_" .. sample_id)) / samples_meta[sample_id].sample_rate
+  if scale_by == 1 then
+    multiplier = params:get("by_percentage_" .. sample_id) / 100
+  elseif scale_by == 2 then
+    multiplier = sample_duration / params:get("by_length_" .. sample_id)
+  elseif scale_by == 3 then
+    multiplier = sample_duration / (options.BY_BARS_DECIMAL[params:get("by_bars_" .. sample_id)] * (60 / Timber.bpm * 4))
+  end
+  
+  if multiplier ~= samples_meta[sample_id].freq_multiplier then
+    engine.freqMultiplier(sample_id, multiplier)
+    samples_meta[sample_id].freq_multiplier = multiplier
+  end
+end
+
+local function update_by_bar_multipliers()
+  for i = 0, Timber.num_sample_params - 1 do
+    if params:get("scale_by_" .. i) == 3 then
+      update_freq_multiplier(i)
+    end
+  end
+end
+
+local function build_extended_params(exclusions)
+  
+  exclusions = exclusions or {}
+  local extended_params = {}
+  for _, v in pairs(param_ids) do
+    
+    local include = true
+    for _, e in pairs(exclusions) do
+      if v == e then
+        include = false
+        break
+      end
+    end
+    
+    if include then
+      if v ~= "by_bars" or beat_params then
+        table.insert(extended_params, v)
+      end
+    end
+  end
+  for _, v in pairs(extra_param_ids) do table.insert(extended_params, v) end
+  
+  return extended_params
+end
+
+local function copy_param(from_param, to_param, exclude_controlspec)
   local to_param_action = to_param.action
   to_param.action = function(value) end
   
   if to_param.t == 3 then -- Control
-    to_param.controlspec = from_param.controlspec
+    if not exclude_controlspec then to_param.controlspec = from_param.controlspec end
     to_param:set(from_param:get())
   elseif to_param.t == 4 then -- File
     to_param:set(from_param:get())
@@ -308,32 +371,11 @@ local function copy_param(from_param, to_param)
   return to_param
 end
 
-function Timber.move_sample(from_id, to_id)
-  
-  if from_id == to_id then return end
-  
-  engine.moveSample(from_id, to_id)
-  
-  local from_meta = samples_meta[from_id]
-  samples_meta[from_id] = samples_meta[to_id]
-  samples_meta[to_id] = from_meta
-  
-  local extended_params = {}
-  for _, v in pairs(param_ids) do table.insert(extended_params, v) end
-  for _, v in pairs(extra_param_ids) do table.insert(extended_params, v) end
-  
-  for k, v in pairs(extended_params) do
-    
-    local from_param = params:lookup_param(v .. "_" .. from_id)
-    local to_param = params:lookup_param(v .. "_" .. to_id)
-    local to_param_orig = copy_table(to_param)
-    
-    to_param = copy_param(from_param, to_param)
-    from_param = copy_param(to_param_orig, from_param)
-  end
-  
+local function move_copy_update(from_id, to_id)
   local ids = {from_id, to_id}
   for _, id in pairs(ids) do
+    update_by_bars_options(id)
+    update_freq_multiplier(id)
     samples_meta[id].positions = {}
     samples_meta[id].playing = false
     Timber.meta_changed_callback(id)    
@@ -348,28 +390,75 @@ function Timber.move_sample(from_id, to_id)
   Timber.views_changed_callback(nil)
 end
 
-function Timber.copy_samples(from_id, to_first_id, to_last_id)
+function Timber.move_sample(from_id, to_id)
   
-  --TODO
-  engine.copySample(from_id, to_first_id)
+  if from_id == to_id then return end
   
-  Timber.setup_params_dirty = true
-  Timber.filter_dirty = true
-  Timber.env_dirty = true
-  Timber.lfo_functions_dirty = true
-  Timber.views_changed_callback(nil)
+  engine.moveSample(from_id, to_id)
+  
+  local from_meta = samples_meta[from_id]
+  samples_meta[from_id] = samples_meta[to_id]
+  samples_meta[to_id] = from_meta
+  
+  local extended_params = build_extended_params()
+  
+  for k, v in pairs(extended_params) do
+    local from_param = params:lookup_param(v .. "_" .. from_id)
+    local to_param = params:lookup_param(v .. "_" .. to_id)
+    local to_param_orig = copy_table(to_param)
+    
+    to_param = copy_param(from_param, to_param)
+    from_param = copy_param(to_param_orig, from_param)
+  end
+  
+  move_copy_update(from_id, to_id)
+end
+
+function Timber.copy_sample(from_id, to_first_id, to_last_id)
+  
+  engine.copySample(from_id, to_first_id, to_last_id)
+  
+  local extended_params = build_extended_params()
+  
+  for i = to_first_id, to_last_id do
+    if from_id ~= i then
+    
+      samples_meta[i] = copy_table(samples_meta[from_id])
+      
+      for k, v in pairs(extended_params) do
+        local from_param = params:lookup_param(v .. "_" .. from_id)
+        local to_param = params:lookup_param(v .. "_" .. i)
+        
+        to_param = copy_param(from_param, to_param)
+      end
+      
+      move_copy_update(from_id, i)
+    end
+  end
 end
 
 function Timber.copy_params(from_id, to_first_id, to_last_id, param_ids)
   
-  --TODO
-  engine.copyParams(from_id, to_first_id)
+  engine.copyParams(from_id, to_first_id, to_last_id)
   
-  Timber.setup_params_dirty = true
-  Timber.filter_dirty = true
-  Timber.env_dirty = true
-  Timber.lfo_functions_dirty = true
-  Timber.views_changed_callback(nil)
+  local exclusions = {"sample", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame", "play_mode"}
+  local extended_params = build_extended_params(exclusions)
+  
+  for i = to_first_id, to_last_id do
+    if from_id ~= i and samples_meta[i].num_frames > 0 then
+      
+      for k, v in pairs(extended_params) do
+        local from_param = params:lookup_param(v .. "_" .. from_id)
+        local to_param = params:lookup_param(v .. "_" .. i)
+        
+        local exclude_controlspec = false
+        if v == "by_length" then exclude_controlspec = true end
+        to_param = copy_param(from_param, to_param, exclude_controlspec)
+      end
+      
+      move_copy_update(from_id, i)
+    end
+  end
 end
 
 local function store_waveform(id, offset, padding, waveform_blob)
@@ -413,33 +502,6 @@ local function voice_freed(id, voice_id)
   Timber.play_positions_changed_callback(id)
 end
 
-local function update_freq_multiplier(sample_id)
-  
-  local scale_by = params:get("scale_by_" .. sample_id)
-  local multiplier = 1
-  local sample_duration = math.abs(params:get("end_frame_" .. sample_id) - params:get("start_frame_" .. sample_id)) / samples_meta[sample_id].sample_rate
-  if scale_by == 1 then
-    multiplier = params:get("by_percentage_" .. sample_id) / 100
-  elseif scale_by == 2 then
-    multiplier = sample_duration / params:get("by_length_" .. sample_id)
-  elseif scale_by == 3 then
-    multiplier = sample_duration / (options.BY_BARS_DECIMAL[params:get("by_bars_" .. sample_id)] * (60 / Timber.bpm * 4))
-  end
-  
-  if multiplier ~= samples_meta[sample_id].freq_multiplier then
-    engine.freqMultiplier(sample_id, multiplier)
-    samples_meta[sample_id].freq_multiplier = multiplier
-  end
-end
-
-local function update_by_bar_multipliers()
-  for i = 0, Timber.num_sample_params - 1 do
-    if params:get("scale_by_" .. i) == 3 then
-      update_freq_multiplier(i)
-    end
-  end
-end
-
 local function set_marker(id, param_prefix)
   
   -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
@@ -475,9 +537,18 @@ local function set_marker(id, param_prefix)
     
     -- Set loop min and max
     params:lookup_param("loop_start_frame_" .. id).controlspec.minval = first_frame
-    params:lookup_param("loop_start_frame_" .. id).controlspec.maxval = math.min(last_frame, loop_end_frame - 100)
-    params:lookup_param("loop_end_frame_" .. id).controlspec.minval = math.max(first_frame, loop_start_frame + 100)
+    params:lookup_param("loop_start_frame_" .. id).controlspec.maxval = last_frame
+    params:lookup_param("loop_end_frame_" .. id).controlspec.minval = first_frame
     params:lookup_param("loop_end_frame_" .. id).controlspec.maxval = last_frame
+    
+    local SHORTEST_LOOP = 100
+    if loop_start_frame > loop_end_frame - SHORTEST_LOOP then
+      if param_prefix == "loop_start_frame_" then
+        loop_end_frame = loop_start_frame + SHORTEST_LOOP
+      elseif param_prefix == "loop_end_frame_" then
+        loop_start_frame = loop_end_frame - SHORTEST_LOOP
+      end
+    end
     
     -- Set loop start and end
     params:set("loop_start_frame_" .. id, loop_start_frame - 1) -- Hack to make sure it gets set
@@ -499,17 +570,14 @@ local function set_marker(id, param_prefix)
     
   else -- Streaming
     
-    -- If setting start frame
     if param_prefix == "start_frame_" then
       params:lookup_param("end_frame_" .. id).controlspec.minval = params:get("start_frame_" .. id)
-      
-    -- If setting end frame
-    elseif param_prefix == "end_frame_" then
-      if lookup_play_mode(id) < 2 then
-        params:lookup_param("start_frame_" .. id).controlspec.maxval = samples_meta[id].num_frames - STREAMING_BUFFER_SIZE
-      else
-        params:lookup_param("start_frame_" .. id).controlspec.maxval = params:get("end_frame_" .. id)
-      end
+    end
+    
+    if lookup_play_mode(id) < 2 then
+      params:lookup_param("start_frame_" .. id).controlspec.maxval = samples_meta[id].num_frames - STREAMING_BUFFER_SIZE
+    else
+      params:lookup_param("start_frame_" .. id).controlspec.maxval = params:get("end_frame_" .. id)
     end
     
   end
@@ -780,7 +848,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   params:add_separator()
   
   params:add{type = "option", id = "play_mode_" .. id, name = "Play Mode", options = options.PLAY_MODE_BUFFER, default = options.PLAY_MODE_BUFFER_DEFAULT, action = function(value)
-    engine.playMode(id, lookup_play_mode(id))
+    set_play_mode(id, lookup_play_mode(id))
     waveform_last_edited = {id = id}
     Timber.views_changed_callback(id)
   end}
@@ -975,9 +1043,12 @@ function Timber.draw_title(sample_id, show_sample_name)
   end
   
   screen.move(4, 9)
-  if Timber.show_id then
+  if Timber.display == "id" then
     screen.text(string.format("%03d", sample_id))
     screen.move(23, 9)
+  elseif Timber.display == "note" then
+    screen.text(MusicUtil.note_num_to_name(sample_id, true))
+    screen.move(27, 9)
   end
   
   if show_sample_name or Timber.shift_mode then
@@ -1030,6 +1101,7 @@ local function update_setup_params(self)
   }
   
   self.names_list.entries = {"Load", "Clear", "Move", "Copy", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
+  self.selected_param_name = self.param_names[self.index]
   
   for _, v in ipairs(extra_param_ids) do
     table.insert(self.names_list.entries, params:lookup_param(v .. "_" .. self.sample_id).name)
@@ -1094,7 +1166,7 @@ function Timber.UI.SampleSetup:set_index(index)
 end
 
 function Timber.UI.SampleSetup:set_param_default()
-  if self.selected_param_name then
+  if self.selected_param_name ~= "" then
     local param = params:lookup_param(self.selected_param_name)
     local default
     if param.default then
@@ -1107,7 +1179,7 @@ function Timber.UI.SampleSetup:set_param_default()
 end
 
 function Timber.UI.SampleSetup:set_param_delta(delta)
-  if self.selected_param_name then
+  if self.selected_param_name ~= "" then
     if string.find(self.selected_param_name, "by_percentage") or string.find(self.selected_param_name, "by_length") then
       if Timber.shift_mode then
         delta = delta * 0.01
@@ -1123,14 +1195,15 @@ function Timber.UI.SampleSetup:enc(n, delta)
   
   if self.move_active then
     if n == 2 or n == 3 then
-      self.move_to = util.round(self.move_to + delta) % Timber.num_sample_params
+      self.move_to = util.clamp(util.round(self.move_to + delta), 0, Timber.num_sample_params - 1)
     end
     
   elseif self.copy_active or self.copy_params_active then
     if n == 2 then
-      self.copy_to_first = util.round(self.copy_to_first + delta) % Timber.num_sample_params
+      self.copy_to_first = util.clamp(util.round(self.copy_to_first + delta), 0, Timber.num_sample_params - 1)
+      self.copy_to_last = util.clamp(self.copy_to_last, self.copy_to_first, Timber.num_sample_params - 1)
     elseif n == 3 then
-      self.copy_to_last = util.round(self.copy_to_last + delta) % Timber.num_sample_params
+      self.copy_to_last = util.clamp(util.round(self.copy_to_last + delta), self.copy_to_first, Timber.num_sample_params - 1)
     end
     
   else
@@ -1170,7 +1243,7 @@ function Timber.UI.SampleSetup:key(n, z)
         Timber.views_changed_callback(self.sample_id)
         
       elseif n == 3 then
-        Timber.copy_samples(self.sample_id, self.copy_to_first, self.copy_to_last)
+        Timber.copy_sample(self.sample_id, self.copy_to_first, self.copy_to_last)
         self.copy_active = false
         self.copy_to_first = 0
         self.copy_to_last = 0
@@ -1229,6 +1302,31 @@ function Timber.UI.SampleSetup:key(n, z)
   end
 end
 
+function Timber.UI.SampleSetup:sample_key(sample_id)
+  
+  if self.move_active then
+    Timber.move_sample(self.sample_id, sample_id)
+    self.move_active = false
+    self.move_to = 0
+    Timber.views_changed_callback(self.sample_id)
+    
+  elseif self.copy_active then
+    Timber.copy_sample(self.sample_id, sample_id, sample_id)
+    self.copy_active = false
+    self.copy_to_first = 0
+    self.copy_to_last = 0
+    Timber.views_changed_callback(self.sample_id)
+    
+  elseif self.copy_params_active then
+    Timber.copy_params(self.sample_id, sample_id, sample_id)
+    self.copy_active = false
+    self.copy_to_first = 0
+    self.copy_to_last = 0
+    Timber.views_changed_callback(self.sample_id)
+    
+  end
+end
+
 function Timber.UI.SampleSetup:redraw()
   
   if Timber.setup_params_dirty then
@@ -1246,7 +1344,11 @@ function Timber.UI.SampleSetup:redraw()
     screen.text("Move")
     screen.level(15)
     screen.move(68, 35)
-    screen.text(string.format("%03d", self.move_to))
+    if Timber.display == "note" then
+       screen.text(MusicUtil.note_num_to_name(self.move_to, true))
+    else
+      screen.text(string.format("%03d", self.move_to))
+    end
     screen.fill()
     
   elseif self.copy_active or self.copy_params_active then
@@ -1260,11 +1362,20 @@ function Timber.UI.SampleSetup:redraw()
     end
     screen.level(15)
     screen.move(68, 35)
-    screen.text(string.format("%03d", self.copy_to_first))
-    screen.move(86, 35)
+    if Timber.display == "note" then
+       screen.text(MusicUtil.note_num_to_name(self.copy_to_first, true))
+       screen.move(88, 35)
+    else
+      screen.text(string.format("%03d", self.copy_to_first))
+      screen.move(86, 35)
+    end
     screen.text("-")
     screen.move(93, 35)
-    screen.text(string.format("%03d", self.copy_to_last))
+    if Timber.display == "note" then
+       screen.text(MusicUtil.note_num_to_name(self.copy_to_last, true))
+    else
+      screen.text(string.format("%03d", self.copy_to_last))
+    end
     screen.fill()
       
   else
