@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 3 Mark Eats
+// v1.0.0 Beta 4 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -77,7 +77,7 @@ Engine_Timber : CroneEngine {
 			freqModLfo2: 0,
 			freqModEnv: 0,
 
-			ampAttack: 0.003,
+			ampAttack: 0,
 			ampDecay: 1,
 			ampSustain: 1,
 			ampRelease: 0.003,
@@ -1012,16 +1012,16 @@ Engine_Timber : CroneEngine {
 			generateWaveformsOnLoad = (msg[1] == 1);
 		});
 
-		// noteOn(voiceId, sampleId, freq, vel)
-		this.addCommand(\noteOn, "iiff", {
+		// noteOn(id, freq, vel, sampleId)
+		this.addCommand(\noteOn, "iffi", {
 			arg msg;
-			var voiceId = msg[1], sampleId = msg[2], freq = msg[3], vel = msg[4],
+			var id = msg[1], freq = msg[2], vel = msg[3] ?? 1, sampleId = msg[4] ?? 0,
 			sample = samples[sampleId];
 
 			// debugBuffer.zero();
 
 			if(sample.notNil, {
-				this.assignVoice(voiceId, sampleId, freq, pitchBendAllRatio, vel);
+				this.assignVoice(id, sampleId, freq, pitchBendAllRatio, vel);
 			});
 		});
 

@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 3 @markeats
+-- 1.0.0 Beta 4 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
@@ -21,13 +21,7 @@
 --  E2/3 : Params
 --
 
-function unrequire(name)
-  package.loaded[name] = nil
-  _G[name] = nil
-end
-unrequire("timber/lib/timber_engine")
-
-local Timber = require "timber/lib/timber_engine"
+local Timber = include("timber/lib/timber_engine")
 local MusicUtil = require "musicutil"
 local UI = require "ui"
 local Formatters = require "formatters"
@@ -141,7 +135,7 @@ local function note_on(sample_id, vel)
   if Timber.samples_meta[sample_id].num_frames > 0 then
     -- print("note_on", sample_id)
     vel = vel or 1
-    engine.noteOn(sample_id, sample_id, MusicUtil.note_num_to_freq(60), vel)
+    engine.noteOn(sample_id, MusicUtil.note_num_to_freq(60), vel, sample_id)
     sample_status[sample_id] = STATUS.PLAYING
     global_view:add_play_visual()
     screen_dirty = true
