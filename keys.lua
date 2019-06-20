@@ -1,5 +1,5 @@
 -- Timber Keys
--- 1.0.0 Beta 3 @markeats
+-- 1.0.0 Beta 4 @markeats
 -- llllllll.co/t/timber
 --
 -- Map samples across a
@@ -14,13 +14,7 @@
 -- E2/3 : Params
 --
 
-function unrequire(name)
-  package.loaded[name] = nil
-  _G[name] = nil
-end
-unrequire("timber/lib/timber_engine")
-
-local Timber = require "timber/lib/timber_engine"
+local Timber = include("timber/lib/timber_engine")
 local MusicUtil = require "musicutil"
 local UI = require "ui"
 local Formatters = require "formatters"
@@ -62,8 +56,8 @@ local function set_sample_id(id)
   key_matrix_view:set_sample_id(current_sample_id)
 end
 
-local function note_on(voice_id, sample_id, freq, vel)
-  engine.noteOn(voice_id, sample_id, freq, vel)
+local function note_on(voice_id, freq, vel, sample_id)
+  engine.noteOn(voice_id, freq, vel, sample_id)
   if params:get("follow") == 2 then
     set_sample_id(sample_id)
   end
@@ -209,7 +203,7 @@ local function midi_event(data)
       sample_setup_view:sample_key(sample_id)
     end
     
-    note_on(voice_id, sample_id, MusicUtil.note_num_to_freq(msg.note), msg.vel / 127)
+    note_on(voice_id, MusicUtil.note_num_to_freq(msg.note), msg.vel / 127, sample_id)
     -- print("note on", msg.note, msg.vel, voice_id, sample_id)
     
   -- Key pressure

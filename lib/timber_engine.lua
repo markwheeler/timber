@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 3
+-- @release v1.0.0 Beta 4
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -88,7 +88,7 @@ options.FILTER_TYPE = {"Low Pass", "High Pass"}
 specs.FILTER_FREQ = ControlSpec.new(20, 20000, "exp", 0, 20000, "Hz")
 specs.FILTER_RESONANCE = ControlSpec.new(0, 1, "lin", 0, 0, "")
 specs.FILTER_TRACKING = ControlSpec.new(0, 2, "lin", 0, 1, ":1")
-specs.AMP_ENV_ATTACK = ControlSpec.new(0.003, 5, "lin", 0, 0.003, "s")
+specs.AMP_ENV_ATTACK = ControlSpec.new(0, 5, "lin", 0, 0, "s")
 specs.AMP_ENV_DECAY = ControlSpec.new(0.003, 5, "lin", 0, 1, "s")
 specs.AMP_ENV_SUSTAIN = ControlSpec.new(0, 1, "lin", 0, 1, "")
 specs.AMP_ENV_RELEASE = ControlSpec.new(0.003, 10, "lin", 0, 0.003, "s")
