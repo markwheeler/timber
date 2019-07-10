@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 4
+-- @release v1.0.0 Beta 5
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -49,7 +49,7 @@ Timber.samples_meta = samples_meta
 Timber.num_sample_params = 0
 
 local param_ids = {
-  "sample", "quality", "original_freq", "detune_cents", "play_mode", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame",
+  "sample", "quality", "transpose", "detune_cents", "play_mode", "start_frame", "end_frame", "loop_start_frame", "loop_end_frame",
   "scale_by", "by_percentage", "by_length", "by_bars",
   "freq_mod_lfo_1", "freq_mod_lfo_2", "freq_mod_env",
   "filter_type", "filter_freq", "filter_resonance", "filter_freq_mod_lfo_1", "filter_freq_mod_lfo_2", "filter_freq_mod_env", "filter_freq_mod_vel", "filter_freq_mod_pressure", "filter_tracking",
@@ -220,7 +220,7 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
     params:set("loop_end_frame_" .. id, 1)
     params:set("loop_end_frame_" .. id, num_frames)
     
-    params:set("original_freq_" .. id, 60)
+    params:set("transpose_" .. id, 0)
     params:set("detune_cents_" .. id, 0)
     params:set("scale_by_" .. id, 1)
     params:set("by_length_" .. id, duration)
@@ -637,21 +637,9 @@ end
 
 -- Formatters
 
-local function format_note_num(param)
-  local value = param:get()
-  local note_name = MusicUtil.note_num_to_name(value, true)
-  local difference = 60 - value
-  local formatted
-  if difference > 0 then
-    formatted = "+" .. difference
-  elseif difference < 0 then
-    formatted = difference
-  end
-  if formatted then
-    formatted = note_name .. " (" .. formatted .. " ST)"
-  else
-    formatted = note_name
-  end    
+local function format_st(param)
+  local formatted = param:get() .. " ST"
+  if param:get() > 0 then formatted = "+" .. formatted end
   return formatted
 end
 
@@ -794,8 +782,8 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.views_changed_callback(id)
     Timber.setup_params_dirty = true
   end}
-  params:add{type = "number", id = "original_freq_" .. id, name = "Original Freq", min = 0, max = 127, default = 60, formatter = format_note_num, action = function(value)
-    engine.originalFreq(id, MusicUtil.note_num_to_freq(value))
+  params:add{type = "number", id = "transpose_" .. id, name = "Transpose", min = -48, max = 48, default = 0, formatter = format_st, action = function(value)
+    engine.transpose(id, value)
     Timber.views_changed_callback(id)
     Timber.setup_params_dirty = true
   end}
@@ -1094,13 +1082,13 @@ local function update_setup_params(self)
     "",
     "",
     "quality_" .. self.sample_id,
-    "original_freq_" .. self.sample_id,
+    "transpose_" .. self.sample_id,
     "detune_cents_" .. self.sample_id,
     "scale_by_" .. self.sample_id,
     scale
   }
   
-  self.names_list.entries = {"Load", "Clear", "Move", "Copy", "Copy Params", "Quality", "Original Freq", "Detune", "Scale By", "Scale"}
+  self.names_list.entries = {"Load", "Clear", "Move", "Copy", "Copy Params", "Quality", "Transpose", "Detune", "Scale By", "Scale"}
   self.selected_param_name = self.param_names[self.index]
   
   for _, v in ipairs(extra_param_ids) do

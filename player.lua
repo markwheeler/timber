@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 4 @markeats
+-- 1.0.0 Beta 5 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
@@ -590,7 +590,7 @@ function GlobalView:redraw()
   
   -- Grid or text prompt
   
-  local num_to_draw = NUM_SAMPLES
+  local num_to_draw = 128
   
   if grid_device.device then
     num_to_draw = grid_w * grid_h
@@ -607,11 +607,11 @@ function GlobalView:redraw()
   if draw_grid then
     
     local LEFT = 68
-    local top = 8
+    local top = 20
     local SIZE = 2
     local GUTTER = 1
     
-    if grid_device.device and grid_h <= 8 then top = top + 12 end
+    if grid_device.device and grid_h == 16 then top = top - 12 end
     
     local x, y = LEFT, top
     for i = 1, num_to_draw do

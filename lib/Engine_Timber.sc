@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 4 Mark Eats
+// v1.0.0 Beta 5 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -57,7 +57,7 @@ Engine_Timber : CroneEngine {
 			sampleRate: 0,
 			numFrames: 0,
 
-			originalFreq: 60.midicps,
+			transpose: 0,
 			detuneCents: 0,
 			pitchBendRatio: 1,
 			pressure: 0,
@@ -305,14 +305,14 @@ Engine_Timber : CroneEngine {
 
 			SynthDef(name, {
 
-				arg out, sampleRate, originalFreq, freq, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
+				arg out, sampleRate, freq, transposeRatio, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
 				filterFreq, filterReso, filterType, filterTracking, filterFreqModLfo1, filterFreqModLfo2, filterFreqModEnv, filterFreqModVel, filterFreqModPressure,
 				pan, panModLfo1, panModLfo2, panModEnv, ampModLfo1, ampModLfo2;
 
-				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
+				var i_nyquist = SampleRate.ir * 0.5, i_cFreq = 48.midicps, i_origFreq = 60.midicps, signal, freqRatio, freqModRatio, filterFreqRatio,
 				killEnvelope, ampEnvelope, modEnvelope, lfo1, lfo2, i_controlLag = 0.005;
 
 				// Lag inputs
@@ -340,9 +340,9 @@ Engine_Timber : CroneEngine {
 
 				// Freq modulation
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
-				freq = freq * detuneRatio;
+				freq = freq * transposeRatio * detuneRatio;
 				freq = (freq * freqModRatio).clip(20, i_nyquist);
-				freqRatio = (freq / originalFreq) * freqMultiplier;
+				freqRatio = (freq / i_origFreq) * freqMultiplier;
 
 				// Player
 				signal = SynthDef.wrap(players[i], [\kr, \kr, \kr, \kr], [freqRatio, sampleRate, gate, playMode]);
@@ -895,8 +895,8 @@ Engine_Timber : CroneEngine {
 
 				\sampleRate, sample.sampleRate,
 				\numFrames, sample.numFrames,
-				\originalFreq, sample.originalFreq,
 				\freq, freq,
+				\transposeRatio, sample.transpose.midiratio,
 				\detuneRatio, (sample.detuneCents / 100).midiratio,
 				\pitchBendRatio, pitchBendRatio,
 				\pitchBendSampleRatio, sample.pitchBendRatio,
@@ -1172,9 +1172,13 @@ Engine_Timber : CroneEngine {
 			this.copyParams(msg[1], msg[2], msg[3]);
 		});
 
-		this.addCommand(\originalFreq, "if", {
+		this.addCommand(\transpose, "if", {
 			arg msg;
-			this.setArgOnSample(msg[1], \originalFreq, msg[2]);
+			var sampleId = msg[1], value = msg[2];
+			if(samples[sampleId].notNil, {
+				samples[sampleId][\transpose] = value;
+				this.setArgOnVoicesPlayingSample(sampleId, \transposeRatio, value.midiratio);
+			});
 
 			// TODO
 			// debugBuffer.write('/home/we/dust/code/timber/lib/debug.wav');

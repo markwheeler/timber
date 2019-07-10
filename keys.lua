@@ -1,5 +1,5 @@
 -- Timber Keys
--- 1.0.0 Beta 4 @markeats
+-- 1.0.0 Beta 5 @markeats
 -- llllllll.co/t/timber
 --
 -- Map samples across a
