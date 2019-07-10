@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 4 @markeats
+-- 1.0.0 Beta 5 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
