@@ -1449,7 +1449,17 @@ function Timber.UI.Waveform:key(n, z)
     if n == 2 then
       self:set_tab(self.tab_id % 2 + 1)
     elseif n == 3 then
-      params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+      if Timber.shift_mode then
+        local start_frame = params:get("start_frame_" .. self.sample_id)
+        local loop_start_frame = params:get("loop_start_frame_" .. self.sample_id)
+        local loop_end_frame = params:get("loop_end_frame_" .. self.sample_id)
+        params:set("start_frame_" .. self.sample_id, params:get("end_frame_" .. self.sample_id))
+        params:set("end_frame_" .. self.sample_id, start_frame)
+        params:set("loop_start_frame_" .. self.sample_id, loop_start_frame)
+        params:set("loop_end_frame_" .. self.sample_id, loop_end_frame)
+      else
+        params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+      end
     end
     Timber.views_changed_callback(self.sample_id)
   end
