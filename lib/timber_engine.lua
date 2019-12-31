@@ -506,30 +506,12 @@ local function set_marker(id, param_prefix)
   
   -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
   
-  local mute_func = function(value) end
-  
-  -- Mute actions
-  local start_frame_param = params:lookup_param("start_frame_" .. id)
-  local start_frame_action = start_frame_param.action
-  start_frame_param.action = mute_func
   local start_frame = params:get("start_frame_" .. id)
-  
-  local end_frame_param = params:lookup_param("end_frame_" .. id)
-  local end_frame_action = end_frame_param.action
-  end_frame_param.action = mute_func
   local end_frame = params:get("end_frame_" .. id)
   
   if samples_meta[id].streaming == 0 then -- Buffer
     
-    -- Mute actions
-    local loop_start_frame_param = params:lookup_param("loop_start_frame_" .. id)
-    local loop_start_frame_action = loop_start_frame_param.action
-    loop_start_frame_param.action = mute_func
     local loop_start_frame = params:get("loop_start_frame_" .. id)
-    
-    local loop_end_frame_param = params:lookup_param("loop_end_frame_" .. id)
-    local loop_end_frame_action = loop_end_frame_param.action
-    loop_end_frame_param.action = mute_func
     local loop_end_frame = params:get("loop_end_frame_" .. id)
     
     local first_frame = math.min(start_frame, end_frame)
@@ -551,10 +533,10 @@ local function set_marker(id, param_prefix)
     end
     
     -- Set loop start and end
-    params:set("loop_start_frame_" .. id, loop_start_frame - 1) -- Hack to make sure it gets set
-    params:set("loop_start_frame_" .. id, loop_start_frame)
-    params:set("loop_end_frame_" .. id, loop_end_frame + 1)
-    params:set("loop_end_frame_" .. id, loop_end_frame)
+    params:set("loop_start_frame_" .. id, loop_start_frame - 1, true) -- Hack to make sure it gets set
+    params:set("loop_start_frame_" .. id, loop_start_frame, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame + 1, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame, true)
     
     if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
       engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
@@ -562,10 +544,6 @@ local function set_marker(id, param_prefix)
     if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
       engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
     end
-    
-    -- Restore actions
-    loop_start_frame_param.action = loop_start_frame_action
-    loop_end_frame_param.action = loop_end_frame_action
     
     
   else -- Streaming
@@ -583,10 +561,10 @@ local function set_marker(id, param_prefix)
   end
   
   -- Set start and end
-  params:set("start_frame_" .. id, start_frame - 1)
-  params:set("start_frame_" .. id, start_frame)
-  params:set("end_frame_" .. id, end_frame + 1)
-  params:set("end_frame_" .. id, end_frame)
+  params:set("start_frame_" .. id, start_frame - 1, true)
+  params:set("start_frame_" .. id, start_frame, true)
+  params:set("end_frame_" .. id, end_frame + 1, true)
+  params:set("end_frame_" .. id, end_frame, true)
   
   if param_prefix == "start_frame_" or start_frame ~= params:get("start_frame_" .. id) then
     engine.startFrame(id, params:get("start_frame_" .. id))
@@ -596,10 +574,6 @@ local function set_marker(id, param_prefix)
     engine.endFrame(id, params:get("end_frame_" .. id))
     update_freq_multiplier(id)
   end
-  
-  -- Restore actions
-  start_frame_param.action = start_frame_action
-  end_frame_param.action = end_frame_action
   
   waveform_last_edited = {id = id, param = param_prefix .. id}
   Timber.views_changed_callback(id)
@@ -1049,10 +1023,17 @@ function Timber.draw_title(sample_id, show_sample_name)
       title = params:string("sample_" .. sample_id)
     end
     
-    if string.len(title) > 19 then
-      title = string.sub(title, 1, 19) .. "..."
+    local first_iter = true
+    while _norns.screen_extents(title) > 100 do
+      if first_iter then
+        title = title .. "..."
+        first_iter = false
+      end
+      title = string.sub(title, 1, string.len(title) - 4) .. "..."
     end
+    
     screen.text(title)
+    
   end
   
   screen.fill()
