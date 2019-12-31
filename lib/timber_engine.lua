@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 5
+-- @release v1.0.0 Beta 6
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -625,7 +625,12 @@ end
 
 local function format_frame_number(sample_id)
   return function(param)
-    return Formatters.format_secs_raw(param:get() / samples_meta[sample_id].sample_rate)
+    local sample_rate = samples_meta[sample_id].sample_rate
+    if sample_rate <= 0 then
+      return "-"
+    else
+      return Formatters.format_secs_raw(param:get() / sample_rate)
+    end
   end
 end
 
