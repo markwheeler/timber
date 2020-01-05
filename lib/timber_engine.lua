@@ -1026,19 +1026,10 @@ function Timber.draw_title(sample_id, show_sample_name)
       screen.level(3)
     else
       title = params:string("sample_" .. sample_id)
-    end
-    
-    local first_iter = true
-    while _norns.screen_extents(title) > 100 do
-      if first_iter then
-        title = title .. "..."
-        first_iter = false
-      end
-      title = string.sub(title, 1, string.len(title) - 4) .. "..."
+      title = util.trim_string_to_width(title, 100)
     end
     
     screen.text(title)
-    
   end
   
   screen.fill()
