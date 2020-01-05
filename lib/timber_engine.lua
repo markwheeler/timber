@@ -1009,6 +1009,7 @@ function Timber.draw_title(sample_id, show_sample_name)
     screen.fill()
   end
   
+  local max_title_width = 100
   screen.move(4, 9)
   if Timber.display == "id" then
     screen.text(string.format("%03d", sample_id))
@@ -1016,6 +1017,7 @@ function Timber.draw_title(sample_id, show_sample_name)
   elseif Timber.display == "note" then
     screen.text(MusicUtil.note_num_to_name(sample_id, true))
     screen.move(27, 9)
+    max_title_width = 96
   end
   
   if show_sample_name or Timber.shift_mode then
@@ -1026,7 +1028,7 @@ function Timber.draw_title(sample_id, show_sample_name)
       screen.level(3)
     else
       title = params:string("sample_" .. sample_id)
-      title = util.trim_string_to_width(title, 100)
+      title = util.trim_string_to_width(title, max_title_width)
     end
     
     screen.text(title)
