@@ -1,5 +1,5 @@
 -- Timber Player
--- 1.0.0 Beta 5 @markeats
+-- 1.0.0 Beta 6 @markeats
 -- llllllll.co/t/timber
 --
 -- Trigger samples with a grid
@@ -101,7 +101,7 @@ local function load_folder(file, add)
       end
       -- Check file type
       local lower_v = v:lower()
-      if string.find(lower_v, ".wav") or string.find(lower_v, ".aif") or string.find(lower_v, ".aiff") then
+      if string.find(lower_v, ".wav") or string.find(lower_v, ".aif") or string.find(lower_v, ".aiff") or string.find(lower_v, ".ogg") then
         Timber.load_sample(sample_id, folder .. v)
         sample_id = sample_id + 1
       else

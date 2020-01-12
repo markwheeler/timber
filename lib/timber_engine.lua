@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 5
+-- @release v1.0.0 Beta 6
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
@@ -506,30 +506,12 @@ local function set_marker(id, param_prefix)
   
   -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
   
-  local mute_func = function(value) end
-  
-  -- Mute actions
-  local start_frame_param = params:lookup_param("start_frame_" .. id)
-  local start_frame_action = start_frame_param.action
-  start_frame_param.action = mute_func
   local start_frame = params:get("start_frame_" .. id)
-  
-  local end_frame_param = params:lookup_param("end_frame_" .. id)
-  local end_frame_action = end_frame_param.action
-  end_frame_param.action = mute_func
   local end_frame = params:get("end_frame_" .. id)
   
   if samples_meta[id].streaming == 0 then -- Buffer
     
-    -- Mute actions
-    local loop_start_frame_param = params:lookup_param("loop_start_frame_" .. id)
-    local loop_start_frame_action = loop_start_frame_param.action
-    loop_start_frame_param.action = mute_func
     local loop_start_frame = params:get("loop_start_frame_" .. id)
-    
-    local loop_end_frame_param = params:lookup_param("loop_end_frame_" .. id)
-    local loop_end_frame_action = loop_end_frame_param.action
-    loop_end_frame_param.action = mute_func
     local loop_end_frame = params:get("loop_end_frame_" .. id)
     
     local first_frame = math.min(start_frame, end_frame)
@@ -551,10 +533,10 @@ local function set_marker(id, param_prefix)
     end
     
     -- Set loop start and end
-    params:set("loop_start_frame_" .. id, loop_start_frame - 1) -- Hack to make sure it gets set
-    params:set("loop_start_frame_" .. id, loop_start_frame)
-    params:set("loop_end_frame_" .. id, loop_end_frame + 1)
-    params:set("loop_end_frame_" .. id, loop_end_frame)
+    params:set("loop_start_frame_" .. id, loop_start_frame - 1, true) -- Hack to make sure it gets set
+    params:set("loop_start_frame_" .. id, loop_start_frame, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame + 1, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame, true)
     
     if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
       engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
@@ -562,10 +544,6 @@ local function set_marker(id, param_prefix)
     if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
       engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
     end
-    
-    -- Restore actions
-    loop_start_frame_param.action = loop_start_frame_action
-    loop_end_frame_param.action = loop_end_frame_action
     
     
   else -- Streaming
@@ -583,10 +561,10 @@ local function set_marker(id, param_prefix)
   end
   
   -- Set start and end
-  params:set("start_frame_" .. id, start_frame - 1)
-  params:set("start_frame_" .. id, start_frame)
-  params:set("end_frame_" .. id, end_frame + 1)
-  params:set("end_frame_" .. id, end_frame)
+  params:set("start_frame_" .. id, start_frame - 1, true)
+  params:set("start_frame_" .. id, start_frame, true)
+  params:set("end_frame_" .. id, end_frame + 1, true)
+  params:set("end_frame_" .. id, end_frame, true)
   
   if param_prefix == "start_frame_" or start_frame ~= params:get("start_frame_" .. id) then
     engine.startFrame(id, params:get("start_frame_" .. id))
@@ -596,10 +574,6 @@ local function set_marker(id, param_prefix)
     engine.endFrame(id, params:get("end_frame_" .. id))
     update_freq_multiplier(id)
   end
-  
-  -- Restore actions
-  start_frame_param.action = start_frame_action
-  end_frame_param.action = end_frame_action
   
   waveform_last_edited = {id = id, param = param_prefix .. id}
   Timber.views_changed_callback(id)
@@ -651,7 +625,12 @@ end
 
 local function format_frame_number(sample_id)
   return function(param)
-    return Formatters.format_secs_raw(param:get() / samples_meta[sample_id].sample_rate)
+    local sample_rate = samples_meta[sample_id].sample_rate
+    if sample_rate <= 0 then
+      return "-"
+    else
+      return Formatters.format_secs_raw(param:get() / sample_rate)
+    end
   end
 end
 
@@ -1030,6 +1009,7 @@ function Timber.draw_title(sample_id, show_sample_name)
     screen.fill()
   end
   
+  local max_title_width = 100
   screen.move(4, 9)
   if Timber.display == "id" then
     screen.text(string.format("%03d", sample_id))
@@ -1037,6 +1017,7 @@ function Timber.draw_title(sample_id, show_sample_name)
   elseif Timber.display == "note" then
     screen.text(MusicUtil.note_num_to_name(sample_id, true))
     screen.move(27, 9)
+    max_title_width = 96
   end
   
   if show_sample_name or Timber.shift_mode then
@@ -1047,11 +1028,9 @@ function Timber.draw_title(sample_id, show_sample_name)
       screen.level(3)
     else
       title = params:string("sample_" .. sample_id)
+      title = util.trim_string_to_width(title, max_title_width)
     end
     
-    if string.len(title) > 19 then
-      title = string.sub(title, 1, 19) .. "..."
-    end
     screen.text(title)
   end
   
@@ -1468,7 +1447,17 @@ function Timber.UI.Waveform:key(n, z)
     if n == 2 then
       self:set_tab(self.tab_id % 2 + 1)
     elseif n == 3 then
-      params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+      if Timber.shift_mode then
+        local start_frame = params:get("start_frame_" .. self.sample_id)
+        local loop_start_frame = params:get("loop_start_frame_" .. self.sample_id)
+        local loop_end_frame = params:get("loop_end_frame_" .. self.sample_id)
+        params:set("start_frame_" .. self.sample_id, params:get("end_frame_" .. self.sample_id))
+        params:set("end_frame_" .. self.sample_id, start_frame)
+        params:set("loop_start_frame_" .. self.sample_id, loop_start_frame)
+        params:set("loop_end_frame_" .. self.sample_id, loop_end_frame)
+      else
+        params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+      end
     end
     Timber.views_changed_callback(self.sample_id)
   end
