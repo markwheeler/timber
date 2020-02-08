@@ -13,7 +13,7 @@
 --  K2 : Play / Stop
 --  K3 : Load folder
 --  K1+K3 : Add folder
---  E3 : BPM
+--  E2 : BPM
 --
 -- SAMPLE PAGES:
 --  K2 : Focus
