@@ -2,7 +2,7 @@
 -- Engine params, functions and UI views.
 --
 -- @module TimberEngine
--- @release v1.0.0 Beta 6
+-- @release v1.0.0 Beta 7
 -- @author Mark Eats
 
 local ControlSpec = require "controlspec"
