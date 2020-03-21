@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 6 Mark Eats
+// v1.0.0 Beta 7 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -549,9 +549,9 @@ Engine_Timber : CroneEngine {
 						this.loadSample();
 					}, {
 
-						// 2 sec then timeout and move to next one
+						// 8 sec then timeout and move to next one (doesn't actually cancel loading)
 						timeoutRoutine = Routine.new({
-							2.yield;
+							8.yield;
 							this.loadFailed(sampleId, "Loading timed out");
 							this.loadSample();
 						}).play;
@@ -565,30 +565,38 @@ Engine_Timber : CroneEngine {
 						sample.loopStartFrame = 0;
 						sample.loopEndFrame = file.numFrames;
 
-						// If file is over the buffer-addressable number of frames (~5.8mins at 48kHz) then prepare it for streaming instead.
+						// If file is over 5 secs stereo or 10 secs mono (at 48kHz) then prepare it for streaming instead.
+						// This makes for max buffer memory usage of 500MB which seems to work out.
 						// Streaming has fairly limited options for playback (no looping etc).
 
-						if(file.numFrames < 16777216, {
-						// if(file.duration < 10, {
+						if(file.numFrames * sample.channels < 480000, {
 
 							// Load into memory
 							if(file.numChannels == 1, {
 								buffer = Buffer.read(server: context.server, path: filePath, action: {
 									arg buf;
-									sample.numFrames = file.numFrames;
-									scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
-									// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channel.").postln;
-									this.queueWaveformGeneration(sampleId, filePath);
+									if(buf.numFrames > 0, {
+										sample.numFrames = file.numFrames;
+										scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
+										// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channel.").postln;
+										this.queueWaveformGeneration(sampleId, filePath);
+									}, {
+										this.loadFailed(sampleId, "Failed to load");
+									});
 									timeoutRoutine.stop();
 									this.loadSample();
 								});
 							}, {
 								buffer = Buffer.readChannel(server: context.server, path: filePath, channels: [0, 1], action: {
 									arg buf;
-									sample.numFrames = file.numFrames;
-									scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
-									// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channels.").postln;
-									this.queueWaveformGeneration(sampleId, filePath);
+									if(buf.numFrames > 0, {
+										sample.numFrames = file.numFrames;
+										scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
+										// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channels.").postln;
+										this.queueWaveformGeneration(sampleId, filePath);
+									}, {
+										this.loadFailed(sampleId, "Failed to load");
+									});
 									timeoutRoutine.stop();
 									this.loadSample();
 								});
