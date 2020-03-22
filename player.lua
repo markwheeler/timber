@@ -819,6 +819,18 @@ function init()
     else Timber.display = "note" end
   end}
   
+  params:add{type = "trigger", id = "launch_mode_all_gate", name = "Launch Mode: All Gate", action = function()
+    for i = 0, NUM_SAMPLES - 1 do
+      params:set("launch_mode_" .. i, 1)
+    end
+  end}
+  
+  params:add{type = "trigger", id = "launch_mode_all_toggle", name = "Launch Mode: All Toggle", action = function()
+    for i = 0, NUM_SAMPLES - 1 do
+      params:set("launch_mode_" .. i, 2)
+    end
+  end}
+  
   params:add_separator()
   
   Timber.add_params()

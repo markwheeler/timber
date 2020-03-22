@@ -29,7 +29,7 @@ Engine_Timber : CroneEngine {
 	var scriptAddress;
 	var waveformQueue;
 	var waveformRoutine;
-	var generatingWaveform = -1;
+	var generatingWaveform = -1; // -1 not running
 	var abandonCurrentWaveform = false;
 
 	var pitchBendAllRatio = 1;
@@ -522,7 +522,7 @@ Engine_Timber : CroneEngine {
 	}
 
 	loadSample {
-		var timeoutRoutine, item, sampleId, filePath, file, buffer, sample = ();
+		var item, sampleId, filePath, file, buffer, sample = ();
 
 		if(loadQueue.notEmpty, {
 
@@ -548,13 +548,6 @@ Engine_Timber : CroneEngine {
 						this.loadFailed(sampleId, "Could not open file");
 						this.loadSample();
 					}, {
-
-						// 8 sec then timeout and move to next one (doesn't actually cancel loading)
-						timeoutRoutine = Routine.new({
-							8.yield;
-							this.loadFailed(sampleId, "Loading timed out");
-							this.loadSample();
-						}).play;
 
 						sample = samples[sampleId];
 
@@ -583,7 +576,6 @@ Engine_Timber : CroneEngine {
 									}, {
 										this.loadFailed(sampleId, "Failed to load");
 									});
-									timeoutRoutine.stop();
 									this.loadSample();
 								});
 							}, {
@@ -597,7 +589,6 @@ Engine_Timber : CroneEngine {
 									}, {
 										this.loadFailed(sampleId, "Failed to load");
 									});
-									timeoutRoutine.stop();
 									this.loadSample();
 								});
 							});
@@ -607,7 +598,6 @@ Engine_Timber : CroneEngine {
 						}, {
 							if(file.numChannels > 2, {
 								this.loadFailed(sampleId, "Too many chans (" ++ file.numChannels ++ ")");
-								timeoutRoutine.stop();
 								this.loadSample();
 							}, {
 								// Prepare for streaming from disk
@@ -617,7 +607,6 @@ Engine_Timber : CroneEngine {
 								scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 1, file.numFrames, file.numChannels, file.sampleRate]);
 								// ("Stream buffer" + sampleId + "prepared:" + file.numFrames + "frames." + file.duration.round(0.01) + "secs." + file.numChannels + "channels.").postln;
 								this.queueWaveformGeneration(sampleId, filePath);
-								timeoutRoutine.stop();
 								this.loadSample();
 							});
 						});
@@ -681,7 +670,7 @@ Engine_Timber : CroneEngine {
 			waveformQueue = waveformQueue.addFirst(item);
 
 			if(generatingWaveform == -1, {
-				this.generateWaveforms()
+				this.generateWaveforms();
 			});
 		});
 	}
@@ -712,25 +701,36 @@ Engine_Timber : CroneEngine {
 
 	generateWaveforms {
 
+		var samplesPerBlock = 200; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
 		var sendEvery = 24000;
-		var sampleId, file, samplesArray, numFrames, numChannels, sampleRate, block, iterations, downsample;
-		var min, max, offset, i, f;
-		var waveform, routine;
+		var totalStartSecs = Date.getDate.rawSeconds;
+		var waveform, waveformRoutine;
 
+		generatingWaveform = waveformQueue.last.sampleId;
 		"Started generating waveforms".postln;
 
 		waveformRoutine = Routine.new({
 
 			while({ waveformQueue.notEmpty }, {
 				var startSecs = Date.getDate.rawSeconds;
+				var file, samplesArray, numFrames, numChannels, sampleRate, block, iterations, downsample;
+				var min, max, i, f, offset = 0;
 				var item = waveformQueue.pop;
-				sampleId = item.sampleId;
+				var sampleId = item.sampleId;
+
 				generatingWaveform = sampleId;
+
+				// Pause if we're loading samples
+				while({ loadQueue.notEmpty }, {
+					0.2.yield;
+				});
 
 				file = SoundFile.openRead(item.filePath);
 				if(file.isNil, {
 					("File could not be opened for waveform generation:" + item.filePath).postln;
 				}, {
+
+					// ("Waveform" + sampleId + "started").postln;
 
 					// Load samples into array
 					numFrames = file.numFrames;
@@ -742,9 +742,8 @@ Engine_Timber : CroneEngine {
 
 					block = (numFrames / waveformDisplayRes).roundUp;
 					iterations = waveformDisplayRes.min(numFrames);
-					downsample = ((10 * (sampleRate / 48000)).min(block / 10).round).max(1);
+					downsample = (block / samplesPerBlock).round.max(1);
 
-					offset = 0;
 					waveform = Int8Array.new((iterations * 2) + (iterations % 4));
 
 					i = 0;
@@ -761,17 +760,19 @@ Engine_Timber : CroneEngine {
 
 								if(abandonCurrentWaveform == false, {
 
-									for(0, numChannels.min(2) - 1, {
+									for(0, numChannels - 1, {
 										arg c;
-										sample = sample + samplesArray[f * numChannels + c];
+										var newSample = samplesArray[f * numChannels + c];
+										if(sample.abs < newSample.abs, {
+											sample = newSample;
+										});
 									});
-									sample = sample / numChannels;
 
 									min = sample.min(min);
 									max = sample.max(max);
 
 									// Let other sclang work happen
-									0.00004.yield;
+									0.00015.yield;
 								});
 								f = f + downsample;
 							});
@@ -793,17 +794,17 @@ Engine_Timber : CroneEngine {
 
 					if(abandonCurrentWaveform, {
 						abandonCurrentWaveform = false;
-						("Waveform" + sampleId + "abandoned after" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
+						// ("Waveform" + sampleId + "abandoned after" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
 					}, {
 						if(waveform.size > 0, {
 							this.sendWaveform(sampleId, offset, waveform);
 						});
-						("Waveform" + sampleId + "generated in" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
+						// ("Waveform" + sampleId + "generated in" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
 					});
 				});
 			});
 
-			"Finished generating waveforms".postln;
+			("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
 			generatingWaveform = -1;
 
 		}).play;
