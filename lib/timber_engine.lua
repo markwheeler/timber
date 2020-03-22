@@ -532,18 +532,18 @@ local function set_marker(id, param_prefix)
       end
     end
     
+    if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
+      engine.loopStartFrame(id, loop_start_frame)
+    end
+    if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
+      engine.loopEndFrame(id, loop_end_frame)
+    end
+        
     -- Set loop start and end
     params:set("loop_start_frame_" .. id, loop_start_frame - 1, true) -- Hack to make sure it gets set
     params:set("loop_start_frame_" .. id, loop_start_frame, true)
     params:set("loop_end_frame_" .. id, loop_end_frame + 1, true)
     params:set("loop_end_frame_" .. id, loop_end_frame, true)
-    
-    if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
-      engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
-    end
-    if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
-      engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
-    end
     
     
   else -- Streaming
