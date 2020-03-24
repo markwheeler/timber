@@ -775,6 +775,8 @@ function init()
   
   -- Add params
   
+  params:add_separator("In/Out")
+  
   params:add{type = "number", id = "grid_device", name = "Grid Device", min = 1, max = 4, default = 1,
     action = function(value)
       grid_device:all(0)
@@ -801,7 +803,7 @@ function init()
       else beat_clock.send = true end
     end}
   
-  params:add_separator()
+  params:add_separator("Player")
   
   params:add{type = "number", id = "bpm", name = "BPM", min = 1, max = 240, default = beat_clock.bpm,
     action = function(value)
@@ -831,9 +833,8 @@ function init()
     end
   end}
   
-  params:add_separator()
-  
   Timber.add_params()
+  params:add_separator()
   -- Index zero to align with MIDI note numbers
   for i = 0, NUM_SAMPLES - 1 do
     local extra_params = {
@@ -857,7 +858,6 @@ function init()
         Timber.setup_params_dirty = true
       end}
     }
-    params:add_separator()
     Timber.add_sample_params(i, true, extra_params)
   end
   
