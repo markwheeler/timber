@@ -25,7 +25,6 @@ Engine_Timber : CroneEngine {
 	var loadQueue;
 	var loadingSample = -1;
 
-	var generateWaveformsOnLoad = true;
 	var scriptAddress;
 	var waveformQueue;
 	var waveformRoutine;
@@ -51,7 +50,7 @@ Engine_Timber : CroneEngine {
 
 			streaming: 0,
 			buffer: nil,
-			path: nil,
+			filePath: nil,
 
 			channels: 0,
 			sampleRate: 0,
@@ -496,7 +495,7 @@ Engine_Timber : CroneEngine {
 
 				newSample.streaming = samples[i].streaming;
 				newSample.buffer = samples[i].buffer;
-				newSample.path = samples[i].path;
+				newSample.filePath = samples[i].filePath;
 
 				newSample.channels = samples[i].channels;
 				newSample.sampleRate = samples[i].sampleRate;
@@ -551,6 +550,7 @@ Engine_Timber : CroneEngine {
 
 						sample = samples[sampleId];
 
+						sample.filePath = filePath;
 						sample.channels = file.numChannels.min(2);
 						sample.sampleRate = file.sampleRate;
 						sample.startFrame = 0;
@@ -570,9 +570,9 @@ Engine_Timber : CroneEngine {
 									arg buf;
 									if(buf.numFrames > 0, {
 										sample.numFrames = file.numFrames;
+										samples[sampleId] = sample;
 										scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
 										// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channel.").postln;
-										this.queueWaveformGeneration(sampleId, filePath);
 									}, {
 										this.loadFailed(sampleId, "Failed to load");
 									});
@@ -583,9 +583,9 @@ Engine_Timber : CroneEngine {
 									arg buf;
 									if(buf.numFrames > 0, {
 										sample.numFrames = file.numFrames;
+										samples[sampleId] = sample;
 										scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
 										// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channels.").postln;
-										this.queueWaveformGeneration(sampleId, filePath);
 									}, {
 										this.loadFailed(sampleId, "Failed to load");
 									});
@@ -601,18 +601,16 @@ Engine_Timber : CroneEngine {
 								this.loadSample();
 							}, {
 								// Prepare for streaming from disk
-								sample.path = filePath;
 								sample.streaming = 1;
 								sample.numFrames = file.numFrames;
+								samples[sampleId] = sample;
 								scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 1, file.numFrames, file.numChannels, file.sampleRate]);
 								// ("Stream buffer" + sampleId + "prepared:" + file.numFrames + "frames." + file.duration.round(0.01) + "secs." + file.numChannels + "channels.").postln;
-								this.queueWaveformGeneration(sampleId, filePath);
 								this.loadSample();
 							});
 						});
 
 						file.close;
-						samples[sampleId] = sample;
 
 					});
 				}, {
@@ -655,16 +653,16 @@ Engine_Timber : CroneEngine {
 	}
 
 	queueWaveformGeneration {
-		arg sampleId, filePath;
+		arg sampleId;
 		var item;
 
 		this.stopWaveformGeneration(sampleId);
 
-		if(generateWaveformsOnLoad, {
+		if(samples[sampleId].filePath.notNil, {
 
 			item = (
 				sampleId: sampleId,
-				filePath: filePath
+				filePath: samples[sampleId].filePath
 			);
 
 			waveformQueue = waveformQueue.addFirst(item);
@@ -701,8 +699,8 @@ Engine_Timber : CroneEngine {
 
 	generateWaveforms {
 
-		var samplesPerBlock = 200; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
-		var sendEvery = 24000;
+		var samplesPerBlock = 1000; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
+		var sendEvery = 6;
 		var totalStartSecs = Date.getDate.rawSeconds;
 		var waveform, waveformRoutine;
 
@@ -770,9 +768,6 @@ Engine_Timber : CroneEngine {
 
 									min = sample.min(min);
 									max = sample.max(max);
-
-									// Let other sclang work happen
-									0.00015.yield;
 								});
 								f = f + downsample;
 							});
@@ -783,11 +778,13 @@ Engine_Timber : CroneEngine {
 							waveform = waveform.add(min);
 							waveform = waveform.add(max);
 
-							if(((i + 1 - offset) * block * numChannels >= sendEvery).and(abandonCurrentWaveform == false), {
+							if(((i + 1 - offset) >= sendEvery).and(abandonCurrentWaveform == false), {
 								this.sendWaveform(sampleId, offset, waveform);
 								offset = i + 1;
 								waveform = Int8Array.new(((iterations - offset) * 2) + (iterations % 4));
 							});
+
+							0.0001.yield; // Let other sclang work happen
 						});
 						i = i + 1;
 					});
@@ -870,7 +867,7 @@ Engine_Timber : CroneEngine {
 
 			}, {
 				cueSecs = Date.getDate.rawSeconds;
-				Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
+				Buffer.cueSoundFile(server: context.server, path: sample.filePath, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
 					arg streamBuffer;
 					if(streamBuffer.numChannels == 1, {
 						defName = \monoStreamingVoice;
@@ -1016,9 +1013,10 @@ Engine_Timber : CroneEngine {
 
 	addCommands {
 
-		this.addCommand(\generateWaveforms, "i", {
+		// generateWaveform(id)
+		this.addCommand(\generateWaveform, "i", {
 			arg msg;
-			generateWaveformsOnLoad = (msg[1] == 1);
+			this.queueWaveformGeneration(msg[1]);
 		});
 
 		// noteOn(id, freq, vel, sampleId)

@@ -112,7 +112,8 @@ local function default_sample()
     freq_multiplier = 1,
     playing = false,
     positions = {},
-    waveform = {}
+    waveform = {},
+    waveform_requested = false
   }
   return sample
 end
@@ -176,6 +177,7 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   samples_meta[id].playing = false
   samples_meta[id].positions = {}
   samples_meta[id].waveform = {}
+  samples_meta[id].waveform_requested = false
   
   local start_frame = params:get("start_frame_" .. id)
   local end_frame = params:get("end_frame_" .. id)
@@ -300,6 +302,11 @@ function Timber.clear_samples(first, last)
   
   Timber.views_changed_callback(nil)
   Timber.setup_params_dirty = true
+end
+
+function Timber.request_waveform(sample_id)
+  samples_meta[sample_id].waveform_requested = true
+  engine.generateWaveform(sample_id)
 end
 
 local function update_freq_multiplier(sample_id)
@@ -1454,17 +1461,24 @@ function Timber.UI.Waveform:key(n, z)
   if z == 1 then
     if n == 2 then
       self:set_tab(self.tab_id % 2 + 1)
+      
     elseif n == 3 then
-      if Timber.shift_mode then
-        local start_frame = params:get("start_frame_" .. self.sample_id)
-        local loop_start_frame = params:get("loop_start_frame_" .. self.sample_id)
-        local loop_end_frame = params:get("loop_end_frame_" .. self.sample_id)
-        params:set("start_frame_" .. self.sample_id, params:get("end_frame_" .. self.sample_id))
-        params:set("end_frame_" .. self.sample_id, start_frame)
-        params:set("loop_start_frame_" .. self.sample_id, loop_start_frame)
-        params:set("loop_end_frame_" .. self.sample_id, loop_end_frame)
+      
+      if not samples_meta[self.sample_id].waveform_requested then
+        Timber.request_waveform(self.sample_id)
+        
       else
-        params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+        if Timber.shift_mode then
+          local start_frame = params:get("start_frame_" .. self.sample_id)
+          local loop_start_frame = params:get("loop_start_frame_" .. self.sample_id)
+          local loop_end_frame = params:get("loop_end_frame_" .. self.sample_id)
+          params:set("start_frame_" .. self.sample_id, params:get("end_frame_" .. self.sample_id))
+          params:set("end_frame_" .. self.sample_id, start_frame)
+          params:set("loop_start_frame_" .. self.sample_id, loop_start_frame)
+          params:set("loop_end_frame_" .. self.sample_id, loop_end_frame)
+        else
+          params:set("play_mode_" .. self.sample_id, params:get("play_mode_" .. self.sample_id) % #params:lookup_param("play_mode_" .. self.sample_id).options + 1)
+        end
       end
     end
     Timber.views_changed_callback(self.sample_id)
@@ -1616,6 +1630,17 @@ function Timber.UI.Waveform:redraw()
     end
     screen.text(info)
     screen.fill()
+    
+    -- Request waveform prompt
+    if not samples_meta[self.sample_id].waveform_requested then
+      screen.level(0)
+      screen.rect(X + W / 2 - 7, util.round(Y + H / 2 - 4), 15, 7)
+      screen.fill()
+      screen.move(X + W / 2, Y + H / 2 + 2)
+      screen.level(3)
+      screen.text_center("K3")
+      screen.fill()
+    end
     
     -- Play positions
     screen.level(2)
