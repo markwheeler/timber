@@ -231,7 +231,7 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
     
   else
     -- These need resetting after having their ControlSpecs altered
-    params:set("start_frame_" .. id, start_frame)
+    params:set("start_frame_" .. id, start_frame, true)
     params:set("end_frame_" .. id, end_frame)
     params:set("by_length_" .. id, by_length)
     
