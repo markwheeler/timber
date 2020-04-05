@@ -369,7 +369,7 @@ function init()
       
       -- Set our own loop point defaults
       params:set("loop_start_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.2))
-      params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.5))
+      params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.4))
       
       -- Set env defaults
       params:set("amp_env_attack_" .. id, 0.01)
