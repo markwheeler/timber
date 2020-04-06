@@ -366,7 +366,7 @@ local function copy_param(from_param, to_param, exclude_controlspec)
   to_param.action = function(value) end
   
   if to_param.t == 3 then -- Control
-    if not exclude_controlspec then to_param.controlspec = from_param.controlspec end
+    if not exclude_controlspec then to_param.controlspec = copy_table(from_param.controlspec) end
     to_param:set(from_param:get())
   elseif to_param.t == 4 then -- File
     to_param:set(from_param:get())
