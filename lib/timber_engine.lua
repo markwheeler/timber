@@ -194,6 +194,84 @@ function Timber.load_sample(id, file)
   params:set("sample_" .. id, file)
 end
 
+local function set_marker(id, param_prefix)
+  
+  -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
+  print("set_marker", id, param_prefix, params:get(param_prefix .. id))
+
+  local start_frame = params:get("start_frame_" .. id)
+  local end_frame = params:get("end_frame_" .. id)
+  
+  if samples_meta[id].streaming == 0 then -- Buffer
+    
+    local loop_start_frame = params:get("loop_start_frame_" .. id)
+    local loop_end_frame = params:get("loop_end_frame_" .. id)
+    
+    local first_frame = math.min(start_frame, end_frame)
+    local last_frame = math.max(start_frame, end_frame)
+    
+    -- Set loop min and max
+    params:lookup_param("loop_start_frame_" .. id).controlspec.minval = first_frame
+    params:lookup_param("loop_start_frame_" .. id).controlspec.maxval = last_frame
+    params:lookup_param("loop_end_frame_" .. id).controlspec.minval = first_frame
+    params:lookup_param("loop_end_frame_" .. id).controlspec.maxval = last_frame
+    
+    local SHORTEST_LOOP = 100
+    if loop_start_frame > loop_end_frame - SHORTEST_LOOP then
+      if param_prefix == "loop_start_frame_" then
+        loop_end_frame = loop_start_frame + SHORTEST_LOOP
+      elseif param_prefix == "loop_end_frame_" then
+        loop_start_frame = loop_end_frame - SHORTEST_LOOP
+      end
+    end
+    
+    if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
+      engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
+    end
+    if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
+      engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
+    end
+        
+    -- Set loop start and end
+    params:set("loop_start_frame_" .. id, loop_start_frame - 1, true) -- Hack to make sure it gets set
+    params:set("loop_start_frame_" .. id, loop_start_frame, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame + 1, true)
+    params:set("loop_end_frame_" .. id, loop_end_frame, true)
+    
+    
+  else -- Streaming
+    
+    if param_prefix == "start_frame_" then
+      params:lookup_param("end_frame_" .. id).controlspec.minval = params:get("start_frame_" .. id)
+    end
+    
+    if lookup_play_mode(id) < 2 then
+      params:lookup_param("start_frame_" .. id).controlspec.maxval = samples_meta[id].num_frames - STREAMING_BUFFER_SIZE
+    else
+      params:lookup_param("start_frame_" .. id).controlspec.maxval = params:get("end_frame_" .. id)
+    end
+    
+  end
+  
+  -- Set start and end
+  params:set("start_frame_" .. id, start_frame - 1, true)
+  params:set("start_frame_" .. id, start_frame, true)
+  params:set("end_frame_" .. id, end_frame + 1, true)
+  params:set("end_frame_" .. id, end_frame, true)
+  
+  if param_prefix == "start_frame_" or start_frame ~= params:get("start_frame_" .. id) then
+    engine.startFrame(id, params:get("start_frame_" .. id))
+    update_freq_multiplier(id)
+  end
+  if param_prefix == "end_frame_" or end_frame ~= params:get("end_frame_" .. id) then
+    engine.endFrame(id, params:get("end_frame_" .. id))
+    update_freq_multiplier(id)
+  end
+  
+  waveform_last_edited = {id = id, param = param_prefix .. id}
+  Timber.views_changed_callback(id)
+end
+
 local function sample_loaded(id, streaming, num_frames, num_channels, sample_rate)
   
   samples_meta[id].streaming = streaming
@@ -260,7 +338,11 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
     -- These need resetting after having their ControlSpecs altered
     params:set("start_frame_" .. id, start_frame, true)
     params:set("end_frame_" .. id, end_frame, true)
-    update_freq_multiplier(id)
+    params:set("by_length_" .. id, by_length)
+    set_marker(id, "end_frame_", params:get("end_frame_" .. id))
+
+    -- This fixes some weirdness when loading from params menu
+    params:set("loop_end_frame_" .. id, params:get("loop_end_frame_" .. id), true)
     
     -- These need pushing to engine
     engine.startFrame(id, params:get("start_frame_" .. id))
@@ -519,83 +601,6 @@ local function voice_freed(id, voice_id)
   end
   Timber.meta_changed_callback(id)
   Timber.play_positions_changed_callback(id)
-end
-
-local function set_marker(id, param_prefix)
-  
-  -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
-
-  local start_frame = params:get("start_frame_" .. id)
-  local end_frame = params:get("end_frame_" .. id)
-  
-  if samples_meta[id].streaming == 0 then -- Buffer
-    
-    local loop_start_frame = params:get("loop_start_frame_" .. id)
-    local loop_end_frame = params:get("loop_end_frame_" .. id)
-    
-    local first_frame = math.min(start_frame, end_frame)
-    local last_frame = math.max(start_frame, end_frame)
-    
-    -- Set loop min and max
-    params:lookup_param("loop_start_frame_" .. id).controlspec.minval = first_frame
-    params:lookup_param("loop_start_frame_" .. id).controlspec.maxval = last_frame
-    params:lookup_param("loop_end_frame_" .. id).controlspec.minval = first_frame
-    params:lookup_param("loop_end_frame_" .. id).controlspec.maxval = last_frame
-    
-    local SHORTEST_LOOP = 100
-    if loop_start_frame > loop_end_frame - SHORTEST_LOOP then
-      if param_prefix == "loop_start_frame_" then
-        loop_end_frame = loop_start_frame + SHORTEST_LOOP
-      elseif param_prefix == "loop_end_frame_" then
-        loop_start_frame = loop_end_frame - SHORTEST_LOOP
-      end
-    end
-    
-    if param_prefix == "loop_start_frame_" or loop_start_frame ~= params:get("loop_start_frame_" .. id) then
-      engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
-    end
-    if param_prefix == "loop_end_frame_" or loop_end_frame ~= params:get("loop_end_frame_" .. id) then
-      engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
-    end
-        
-    -- Set loop start and end
-    params:set("loop_start_frame_" .. id, loop_start_frame - 1, true) -- Hack to make sure it gets set
-    params:set("loop_start_frame_" .. id, loop_start_frame, true)
-    params:set("loop_end_frame_" .. id, loop_end_frame + 1, true)
-    params:set("loop_end_frame_" .. id, loop_end_frame, true)
-    
-    
-  else -- Streaming
-    
-    if param_prefix == "start_frame_" then
-      params:lookup_param("end_frame_" .. id).controlspec.minval = params:get("start_frame_" .. id)
-    end
-    
-    if lookup_play_mode(id) < 2 then
-      params:lookup_param("start_frame_" .. id).controlspec.maxval = samples_meta[id].num_frames - STREAMING_BUFFER_SIZE
-    else
-      params:lookup_param("start_frame_" .. id).controlspec.maxval = params:get("end_frame_" .. id)
-    end
-    
-  end
-  
-  -- Set start and end
-  params:set("start_frame_" .. id, start_frame - 1, true)
-  params:set("start_frame_" .. id, start_frame, true)
-  params:set("end_frame_" .. id, end_frame + 1, true)
-  params:set("end_frame_" .. id, end_frame, true)
-  
-  if param_prefix == "start_frame_" or start_frame ~= params:get("start_frame_" .. id) then
-    engine.startFrame(id, params:get("start_frame_" .. id))
-    update_freq_multiplier(id)
-  end
-  if param_prefix == "end_frame_" or end_frame ~= params:get("end_frame_" .. id) then
-    engine.endFrame(id, params:get("end_frame_" .. id))
-    update_freq_multiplier(id)
-  end
-  
-  waveform_last_edited = {id = id, param = param_prefix .. id}
-  Timber.views_changed_callback(id)
 end
 
 function Timber.osc_event(path, args, from)
