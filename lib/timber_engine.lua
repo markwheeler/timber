@@ -197,7 +197,6 @@ end
 local function set_marker(id, param_prefix)
   
   -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
-  print("set_marker", id, param_prefix, params:get(param_prefix .. id))
 
   local start_frame = params:get("start_frame_" .. id)
   local end_frame = params:get("end_frame_" .. id)
