@@ -153,6 +153,33 @@ local function update_by_bars_options(sample_id)
   end
 end
 
+local function update_freq_multiplier(sample_id)
+  
+  local scale_by = params:get("scale_by_" .. sample_id)
+  local multiplier = 1
+  local sample_duration = math.abs(params:get("end_frame_" .. sample_id) - params:get("start_frame_" .. sample_id)) / samples_meta[sample_id].sample_rate
+  if scale_by == 1 then
+    multiplier = params:get("by_percentage_" .. sample_id) / 100
+  elseif scale_by == 2 then
+    multiplier = sample_duration / params:get("by_length_" .. sample_id)
+  elseif scale_by == 3 then
+    multiplier = sample_duration / (options.BY_BARS_DECIMAL[params:get("by_bars_" .. sample_id)] * (60 / Timber.bpm * 4))
+  end
+  
+  if multiplier ~= samples_meta[sample_id].freq_multiplier then
+    engine.freqMultiplier(sample_id, multiplier)
+    samples_meta[sample_id].freq_multiplier = multiplier
+  end
+end
+
+local function update_by_bar_multipliers()
+  for i = 0, Timber.num_sample_params - 1 do
+    if params:get("scale_by_" .. i) == 3 then
+      update_freq_multiplier(i)
+    end
+  end
+end
+
 local function set_play_mode(id, play_mode)
   engine.playMode(id, play_mode)
   if samples_meta[id].streaming == 1 then
@@ -232,8 +259,14 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   else
     -- These need resetting after having their ControlSpecs altered
     params:set("start_frame_" .. id, start_frame, true)
-    params:set("end_frame_" .. id, end_frame)
-    params:set("by_length_" .. id, by_length)
+    params:set("end_frame_" .. id, end_frame, true)
+    update_freq_multiplier(id)
+    
+    -- These need pushing to engine
+    engine.startFrame(id, params:get("start_frame_" .. id))
+    engine.endFrame(id, params:get("end_frame_" .. id))
+    engine.loopStartFrame(id, params:get("loop_start_frame_" .. id))
+    engine.loopEndFrame(id, params:get("loop_end_frame_" .. id))
     
     set_play_mode(id, lookup_play_mode(id))
   end
@@ -307,33 +340,6 @@ end
 function Timber.request_waveform(sample_id)
   samples_meta[sample_id].waveform_requested = true
   engine.generateWaveform(sample_id)
-end
-
-local function update_freq_multiplier(sample_id)
-  
-  local scale_by = params:get("scale_by_" .. sample_id)
-  local multiplier = 1
-  local sample_duration = math.abs(params:get("end_frame_" .. sample_id) - params:get("start_frame_" .. sample_id)) / samples_meta[sample_id].sample_rate
-  if scale_by == 1 then
-    multiplier = params:get("by_percentage_" .. sample_id) / 100
-  elseif scale_by == 2 then
-    multiplier = sample_duration / params:get("by_length_" .. sample_id)
-  elseif scale_by == 3 then
-    multiplier = sample_duration / (options.BY_BARS_DECIMAL[params:get("by_bars_" .. sample_id)] * (60 / Timber.bpm * 4))
-  end
-  
-  if multiplier ~= samples_meta[sample_id].freq_multiplier then
-    engine.freqMultiplier(sample_id, multiplier)
-    samples_meta[sample_id].freq_multiplier = multiplier
-  end
-end
-
-local function update_by_bar_multipliers()
-  for i = 0, Timber.num_sample_params - 1 do
-    if params:get("scale_by_" .. i) == 3 then
-      update_freq_multiplier(i)
-    end
-  end
 end
 
 local function build_extended_params(exclusions)
@@ -518,7 +524,7 @@ end
 local function set_marker(id, param_prefix)
   
   -- Updates start frame, end frame, loop start frame, loop end frame all at once to make sure everything is valid
-  
+
   local start_frame = params:get("start_frame_" .. id)
   local end_frame = params:get("end_frame_" .. id)
   
