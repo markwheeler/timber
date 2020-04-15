@@ -1154,6 +1154,7 @@ function Timber.UI.SampleSetup:set_sample_id(id)
   self.move_active = false
   self.copy_active = false
   self.copy_params_active = false
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.SampleSetup:set_index(index)
@@ -1427,6 +1428,7 @@ end
 
 function Timber.UI.Waveform:set_sample_id(id)
   self.sample_id = id
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.Waveform:set_tab(id)
@@ -1736,6 +1738,7 @@ end
 function Timber.UI.FilterAmp:set_sample_id(id)
   self.sample_id = id
   Timber.filter_dirty = true
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.FilterAmp:set_tab(id)
@@ -1837,6 +1840,7 @@ end
 function Timber.UI.Env:set_sample_id(id)
   self.sample_id = id
   Timber.env_dirty = true
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.Env:set_tab(id)
@@ -2024,6 +2028,7 @@ end
 function Timber.UI.Lfos:set_sample_id(id)
   self.sample_id = id
   Timber.lfo_functions_dirty = true
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.Lfos:set_tab(id)
@@ -2180,6 +2185,7 @@ end
 
 function Timber.UI.ModMatrix:set_sample_id(id)
   self.sample_id = id
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.ModMatrix:set_index(index)
@@ -2281,6 +2287,7 @@ end
 
 function Timber.UI.KeyMatrix:set_sample_id(id)
   self.sample_id = id
+  Timber.views_changed_callback(id)
 end
 
 function Timber.UI.KeyMatrix:set_index(index)
