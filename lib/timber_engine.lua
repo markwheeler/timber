@@ -288,7 +288,7 @@ local function sample_loaded(id, streaming, num_frames, num_channels, sample_rat
   local by_length = params:get("by_length_" .. id)
   
   local start_frame_max = num_frames
-  if streaming == 1 then
+  if streaming == 1 and lookup_play_mode(id) < 2 then
     start_frame_max = start_frame_max - STREAMING_BUFFER_SIZE
   end
   params:lookup_param("start_frame_" .. id).controlspec.maxval = start_frame_max

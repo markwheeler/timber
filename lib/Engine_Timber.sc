@@ -819,7 +819,7 @@ Engine_Timber : CroneEngine {
 				0.002.yield;
 			});
 
-			// ("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
+			("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
 			generatingWaveform = -1;
 
 		}).play;
