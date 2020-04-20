@@ -72,13 +72,13 @@ options.SCALE_BY_NO_BARS = {"Percentage", "Length"}
 specs.BY_PERCENTAGE = ControlSpec.new(10, 500, "lin", 0, 100, "%")
 
 options.BY_BARS = {"1/64", "1/48", "1/32", "1/24", "1/16", "1/12", "1/8", "1/6", "1/4", "1/3", "1/2", "2/3", "3/4", "1 bar"}
-options.BY_BARS_NA = {}
-for i = 1, #options.BY_BARS do table.insert(options.BY_BARS_NA, "N/A") end
 options.BY_BARS_DECIMAL = {1/64, 1/48, 1/32, 1/24, 1/16, 1/12, 1/8, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1}
 for i = 2, 32 do
   table.insert(options.BY_BARS, i .. " bars")
   table.insert(options.BY_BARS_DECIMAL, i)
 end
+options.BY_BARS_NA = {}
+for i = 1, #options.BY_BARS do table.insert(options.BY_BARS_NA, "N/A") end
 
 specs.LFO_1_FREQ = ControlSpec.new(0.05, 20, "exp", 0, 2, "Hz")
 specs.LFO_2_FREQ = ControlSpec.new(0.05, 20, "exp", 0, 4, "Hz")
