@@ -452,7 +452,10 @@ local function copy_param(from_param, to_param, exclude_controlspec)
   local to_param_action = to_param.action
   to_param.action = function(value) end
   
-  if to_param.t == 3 then -- Control
+  if to_param.t == 2 then -- Option
+    to_param.options = from_param.options
+    to_param:set(from_param:get())
+  elseif to_param.t == 3 then -- Control
     if not exclude_controlspec then
       if string.sub(from_param.id, 1, 11) == "start_frame" or string.sub(from_param.id, 1, 9) == "end_frame" or string.sub(from_param.id, 1, 16) == "loop_start_frame" or string.sub(from_param.id, 1, 14) == "loop_end_frame" then
         to_param.controlspec = copy_table(from_param.controlspec)
