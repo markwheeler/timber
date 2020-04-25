@@ -1,5 +1,5 @@
 -- Timber Keys
--- 1.0.0 Beta 6 @markeats
+-- 1.0.0 Beta 7 @markeats
 -- llllllll.co/t/timber
 --
 -- Map samples across a
@@ -369,7 +369,7 @@ function init()
       
       -- Set our own loop point defaults
       params:set("loop_start_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.2))
-      params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.5))
+      params:set("loop_end_frame_" .. id, util.round(Timber.samples_meta[id].num_frames * 0.4))
       
       -- Set env defaults
       params:set("amp_env_attack_" .. id, 0.01)
@@ -386,6 +386,8 @@ function init()
   
   -- Add params
   
+  params:add_separator("Keys")
+  
   params:add{type = "number", id = "midi_device", name = "MIDI Device", min = 1, max = 4, default = 1, action = function(value)
     midi_in_device.event = nil
     midi_in_device = midi.connect(value)
@@ -395,11 +397,9 @@ function init()
   
   params:add{type = "option", id = "follow", name = "Follow", options = {"Off", "On"}, default = 2}
   
-  params:add_separator()
-  
   Timber.add_params()
+  params:add_separator()
   for i = 0, NUM_SAMPLES - 1 do
-    params:add_separator()
     Timber.add_sample_params(i)
   end
   

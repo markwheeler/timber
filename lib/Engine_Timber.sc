@@ -1,6 +1,6 @@
 // CroneEngine_Timber
 //
-// v1.0.0 Beta 6 Mark Eats
+// v1.0.0 Beta 7 Mark Eats
 
 Engine_Timber : CroneEngine {
 
@@ -25,11 +25,10 @@ Engine_Timber : CroneEngine {
 	var loadQueue;
 	var loadingSample = -1;
 
-	var generateWaveformsOnLoad = true;
 	var scriptAddress;
 	var waveformQueue;
 	var waveformRoutine;
-	var generatingWaveform = -1;
+	var generatingWaveform = -1; // -1 not running
 	var abandonCurrentWaveform = false;
 
 	var pitchBendAllRatio = 1;
@@ -51,7 +50,7 @@ Engine_Timber : CroneEngine {
 
 			streaming: 0,
 			buffer: nil,
-			path: nil,
+			filePath: nil,
 
 			channels: 0,
 			sampleRate: 0,
@@ -186,13 +185,13 @@ Engine_Timber : CroneEngine {
 
 				// Start (these also mute one-shots)
 				duckControl = Select.ar(firstFrame > 0, [
-					phase.linlin(firstFrame, firstFrame + 1, 0, 1),
+					phase > firstFrame,
 					phase.linlin(firstFrame, firstFrame + duckNumFrames, 0, 1)
 				]);
 
 				// End
 				duckControl = duckControl * Select.ar(lastFrame < numFrames, [
-					phase.linlin(lastFrame - 1, lastFrame, 1, 0),
+					phase < lastFrame,
 					phase.linlin(lastFrame - duckNumFrames, lastFrame, 1, 0)
 				]);
 
@@ -208,9 +207,7 @@ Engine_Timber : CroneEngine {
 				]) * inLoop;
 
 				duckControl = duckControl * EnvGen.ar(Env.new([1, 0, 1], [A2K.kr(duckDuration)], \linear, nil, nil), duckGate);
-
-				// duckControl.poll(8, "duckControl");
-
+        
 				// Debug buffer
 				/*BufWr.ar([
 					phase.linlin(firstFrame, lastFrame, 0, 1),
@@ -243,6 +240,7 @@ Engine_Timber : CroneEngine {
 				SendReply.kr(trig: Impulse.kr(15), cmdName: '/replyPlayPosition', values: [sampleId, voiceId, progress / numFrames]);
 
 				// Ducking
+				// Note: There will be some inaccuracies with the length of the duck for really long samples but tested fine at 1hr
 				duckDuration = 0.003 * sampleRate * rate.reciprocal;
 
 				// Start
@@ -253,7 +251,7 @@ Engine_Timber : CroneEngine {
 
 				// End
 				duckControl = duckControl * Select.ar(endFrame < numFrames, [
-					progress.linlin(endFrame, endFrame + 1, 1, loopEnabled),
+					((progress <= endFrame) + loopEnabled).min(1),
 					progress.linlin(endFrame - duckDuration, endFrame, 1, loopEnabled)
 				]);
 
@@ -333,11 +331,7 @@ Engine_Timber : CroneEngine {
 				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
-
-				// gate.poll(8, "gate");
-				// killGate.poll(8, "killGate");
-				// ampEnvelope.poll(8, "ampEnvelope");
-
+        
 				// Freq modulation
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
 				freq = freq * transposeRatio * detuneRatio;
@@ -496,7 +490,7 @@ Engine_Timber : CroneEngine {
 
 				newSample.streaming = samples[i].streaming;
 				newSample.buffer = samples[i].buffer;
-				newSample.path = samples[i].path;
+				newSample.filePath = samples[i].filePath;
 
 				newSample.channels = samples[i].channels;
 				newSample.sampleRate = samples[i].sampleRate;
@@ -522,7 +516,7 @@ Engine_Timber : CroneEngine {
 	}
 
 	loadSample {
-		var timeoutRoutine, item, sampleId, filePath, file, buffer, sample = ();
+		var item, sampleId, filePath, file, buffer, sample = ();
 
 		if(loadQueue.notEmpty, {
 
@@ -549,15 +543,9 @@ Engine_Timber : CroneEngine {
 						this.loadSample();
 					}, {
 
-						// 2 sec then timeout and move to next one
-						timeoutRoutine = Routine.new({
-							2.yield;
-							this.loadFailed(sampleId, "Loading timed out");
-							this.loadSample();
-						}).play;
-
 						sample = samples[sampleId];
 
+						sample.filePath = filePath;
 						sample.channels = file.numChannels.min(2);
 						sample.sampleRate = file.sampleRate;
 						sample.startFrame = 0;
@@ -565,57 +553,67 @@ Engine_Timber : CroneEngine {
 						sample.loopStartFrame = 0;
 						sample.loopEndFrame = file.numFrames;
 
-						// If file is over the buffer-addressable number of frames (~5.8mins at 48kHz) then prepare it for streaming instead.
-						// Streaming has fairly limited options for playback (no looping etc).
-
-						if(file.numFrames < 16777216, {
-						// if(file.duration < 10, {
-
-							// Load into memory
-							if(file.numChannels == 1, {
-								buffer = Buffer.read(server: context.server, path: filePath, action: {
-									arg buf;
-									sample.numFrames = file.numFrames;
-									scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
-									// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channel.").postln;
-									this.queueWaveformGeneration(sampleId, filePath);
-									timeoutRoutine.stop();
-									this.loadSample();
-								});
-							}, {
-								buffer = Buffer.readChannel(server: context.server, path: filePath, channels: [0, 1], action: {
-									arg buf;
-									sample.numFrames = file.numFrames;
-									scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
-									// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channels.").postln;
-									this.queueWaveformGeneration(sampleId, filePath);
-									timeoutRoutine.stop();
-									this.loadSample();
-								});
-							});
-							sample.buffer = buffer;
-							sample.streaming = 0;
+						// Max sample size of 2hr at 48kHz (aribtary number)
+						if(file.numFrames > 345600000, {
+							this.loadFailed(sampleId, "Too long, 2hr@48k max");
+							this.loadSample();
 
 						}, {
-							if(file.numChannels > 2, {
-								this.loadFailed(sampleId, "Too many chans (" ++ file.numChannels ++ ")");
-								timeoutRoutine.stop();
-								this.loadSample();
+
+							// If file is over 5 secs stereo or 10 secs mono (at 48kHz) then prepare it for streaming instead.
+							// This makes for max buffer memory usage of 500MB which seems to work out.
+							// Streaming has fairly limited options for playback (no looping etc).
+
+							if(file.numFrames * sample.channels < 480000, {
+
+								// Load into memory
+								if(file.numChannels == 1, {
+									buffer = Buffer.read(server: context.server, path: filePath, action: {
+										arg buf;
+										if(buf.numFrames > 0, {
+											sample.numFrames = file.numFrames;
+											samples[sampleId] = sample;
+											scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
+											// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channel.").postln;
+										}, {
+											this.loadFailed(sampleId, "Failed to load");
+										});
+										this.loadSample();
+									});
+								}, {
+									buffer = Buffer.readChannel(server: context.server, path: filePath, channels: [0, 1], action: {
+										arg buf;
+										if(buf.numFrames > 0, {
+											sample.numFrames = file.numFrames;
+											samples[sampleId] = sample;
+											scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 0, file.numFrames, file.numChannels, file.sampleRate]);
+											// ("Buffer" + sampleId + "loaded:" + buf.numFrames + "frames." + buf.duration.round(0.01) + "secs." + buf.numChannels + "channels.").postln;
+										}, {
+											this.loadFailed(sampleId, "Failed to load");
+										});
+										this.loadSample();
+									});
+								});
+								sample.buffer = buffer;
+								sample.streaming = 0;
+
 							}, {
-								// Prepare for streaming from disk
-								sample.path = filePath;
-								sample.streaming = 1;
-								sample.numFrames = file.numFrames;
-								scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 1, file.numFrames, file.numChannels, file.sampleRate]);
-								// ("Stream buffer" + sampleId + "prepared:" + file.numFrames + "frames." + file.duration.round(0.01) + "secs." + file.numChannels + "channels.").postln;
-								this.queueWaveformGeneration(sampleId, filePath);
-								timeoutRoutine.stop();
-								this.loadSample();
+								if(file.numChannels > 2, {
+									this.loadFailed(sampleId, "Too many chans (" ++ file.numChannels ++ ")");
+									this.loadSample();
+								}, {
+									// Prepare for streaming from disk
+									sample.streaming = 1;
+									sample.numFrames = file.numFrames;
+									samples[sampleId] = sample;
+									scriptAddress.sendBundle(0, ['/engineSampleLoaded', sampleId, 1, file.numFrames, file.numChannels, file.sampleRate]);
+									// ("Stream buffer" + sampleId + "prepared:" + file.numFrames + "frames." + file.duration.round(0.01) + "secs." + file.numChannels + "channels.").postln;
+									this.loadSample();
+								});
 							});
 						});
 
 						file.close;
-						samples[sampleId] = sample;
 
 					});
 				}, {
@@ -658,22 +656,22 @@ Engine_Timber : CroneEngine {
 	}
 
 	queueWaveformGeneration {
-		arg sampleId, filePath;
+		arg sampleId;
 		var item;
 
 		this.stopWaveformGeneration(sampleId);
 
-		if(generateWaveformsOnLoad, {
+		if(samples[sampleId].filePath.notNil, {
 
 			item = (
 				sampleId: sampleId,
-				filePath: filePath
+				filePath: samples[sampleId].filePath
 			);
 
 			waveformQueue = waveformQueue.addFirst(item);
 
 			if(generatingWaveform == -1, {
-				this.generateWaveforms()
+				this.generateWaveforms();
 			});
 		});
 	}
@@ -704,98 +702,118 @@ Engine_Timber : CroneEngine {
 
 	generateWaveforms {
 
-		var sendEvery = 24000;
-		var sampleId, file, samplesArray, numFrames, numChannels, sampleRate, block, iterations, downsample;
-		var min, max, offset, i, f;
-		var waveform, routine;
+		var samplesPerSlice = 1000; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
+		var sendEvery = 3;
+		var totalStartSecs = Date.getDate.rawSeconds;
+		var waveformRoutine;
 
+		generatingWaveform = waveformQueue.last.sampleId;
 		"Started generating waveforms".postln;
 
 		waveformRoutine = Routine.new({
 
 			while({ waveformQueue.notEmpty }, {
 				var startSecs = Date.getDate.rawSeconds;
+				var file, rawData, waveform, numFramesRemaining, numChannels, chunkSize, numSlices, sliceSize, stride, framesInSliceRemaining;
+				var frame = 0, slice = 0, offset = 0;
 				var item = waveformQueue.pop;
-				sampleId = item.sampleId;
+				var sampleId = item.sampleId;
+
 				generatingWaveform = sampleId;
+
+				// Pause if we're loading samples
+				while({ loadQueue.notEmpty }, {
+					0.2.yield;
+				});
 
 				file = SoundFile.openRead(item.filePath);
 				if(file.isNil, {
 					("File could not be opened for waveform generation:" + item.filePath).postln;
 				}, {
 
-					// Load samples into array
-					numFrames = file.numFrames;
+					// ("Waveform" + sampleId + "started").postln;
+
+					numFramesRemaining = file.numFrames;
 					numChannels = file.numChannels;
-					sampleRate = file.sampleRate;
-					samplesArray = FloatArray.newClear(numFrames * numChannels);
-					file.readData(samplesArray);
-					file.close;
+					chunkSize = (1048576 / numChannels).floor * numChannels;
+					numSlices = waveformDisplayRes.min(file.numFrames);
+					sliceSize = file.numFrames / waveformDisplayRes;
+					framesInSliceRemaining = sliceSize;
+					stride = (sliceSize / samplesPerSlice).max(1);
 
-					block = (numFrames / waveformDisplayRes).roundUp;
-					iterations = waveformDisplayRes.min(numFrames);
-					downsample = ((10 * (sampleRate / 48000)).min(block / 10).round).max(1);
+					waveform = Int8Array.new((numSlices * 2) + (numSlices % 4));
 
-					offset = 0;
-					waveform = Int8Array.new((iterations * 2) + (iterations % 4));
+					// Process in chunks
+					while({
+						(numFramesRemaining > 0).and({
+							rawData = FloatArray.newClear(min(numFramesRemaining * numChannels, chunkSize));
+							file.readData(rawData);
+							rawData.size > 0;
+						}).and(abandonCurrentWaveform == false)
+					}, {
 
-					i = 0;
-					while({ (i < iterations).and(abandonCurrentWaveform == false) }, {
+						var min = 0, max = 0;
 
-						if(abandonCurrentWaveform == false, {
-
-							min = 0;
-							max = 0;
-
-							f = i * block;
-							while({ (f < (i * block + block).min(numFrames)).and(abandonCurrentWaveform == false) }, {
-								var sample = 0;
-
-								if(abandonCurrentWaveform == false, {
-
-									for(0, numChannels.min(2) - 1, {
-										arg c;
-										sample = sample + samplesArray[f * numChannels + c];
-									});
-									sample = sample / numChannels;
-
-									min = sample.min(min);
-									max = sample.max(max);
-
-									// Let other sclang work happen
-									0.00004.yield;
-								});
-								f = f + downsample;
+						while({ (frame.round * numChannels + numChannels - 1 < rawData.size).and(abandonCurrentWaveform == false) }, {
+							for(0, numChannels.min(2) - 1, {
+								arg c;
+								var sample = rawData[frame.round.asInt * numChannels + c];
+								min = sample.min(min);
+								max = sample.max(max);
 							});
 
-							// 0-126, 63 is center (zero)
-							min = min.linlin(-1, 0, 0, 63).round.asInt;
-							max = max.linlin(0, 1, 63, 126).round.asInt;
-							waveform = waveform.add(min);
-							waveform = waveform.add(max);
+							frame = frame + stride;
+							framesInSliceRemaining = framesInSliceRemaining - stride;
 
-							if(((i + 1 - offset) * block * numChannels >= sendEvery).and(abandonCurrentWaveform == false), {
-								this.sendWaveform(sampleId, offset, waveform);
-								offset = i + 1;
-								waveform = Int8Array.new(((iterations - offset) * 2) + (iterations % 4));
+							// Slice done
+							if(framesInSliceRemaining < 1, {
+
+								framesInSliceRemaining = framesInSliceRemaining + sliceSize;
+
+								// 0-126, 63 is center (zero)
+								min = min.linlin(-1, 0, 0, 63).round.asInt;
+								max = max.linlin(0, 1, 63, 126).round.asInt;
+								waveform = waveform.add(min);
+								waveform = waveform.add(max);
+								min = 0;
+								max = 0;
+
+								if(((slice + 1) % sendEvery == 0).and(abandonCurrentWaveform == false), {
+									this.sendWaveform(sampleId, offset, waveform);
+									offset = offset + sendEvery;
+									waveform = Int8Array.new(((numSlices - offset) * 2) + (numSlices % 4));
+								});
+								slice = slice + 1;
+							});
+
+							// Let other sclang work happen if it's a long file
+							if(file.numFrames > 1000000, {
+								0.00004.yield;
 							});
 						});
-						i = i + 1;
+
+						frame = frame - (rawData.size / numChannels);
+						numFramesRemaining = numFramesRemaining - (rawData.size / numChannels);
 					});
+
+					file.close;
 
 					if(abandonCurrentWaveform, {
 						abandonCurrentWaveform = false;
-						("Waveform" + sampleId + "abandoned after" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
+						// ("Waveform" + sampleId + "abandoned after" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
 					}, {
 						if(waveform.size > 0, {
 							this.sendWaveform(sampleId, offset, waveform);
 						});
-						("Waveform" + sampleId + "generated in" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
+						// ("Waveform" + sampleId + "generated in" + (Date.getDate.rawSeconds - startSecs).round(0.001) + "s").postln;
 					});
 				});
+
+				// Let other sclang work happen
+				0.002.yield;
 			});
 
-			"Finished generating waveforms".postln;
+			("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
 			generatingWaveform = -1;
 
 		}).play;
@@ -861,8 +879,9 @@ Engine_Timber : CroneEngine {
 
 			}, {
 				cueSecs = Date.getDate.rawSeconds;
-				Buffer.cueSoundFile(server: context.server, path: sample.path, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
+				Buffer.cueSoundFile(server: context.server, path: sample.filePath, startFrame: sample.startFrame, numChannels: sample.channels, bufferSize: 65536, completionMessage: {
 					arg streamBuffer;
+					// ("Sound file cued. Chans:" + streamBuffer.numChannels + "size" + streamBuffer.size).postln;
 					if(streamBuffer.numChannels == 1, {
 						defName = \monoStreamingVoice;
 					}, {
@@ -1007,9 +1026,10 @@ Engine_Timber : CroneEngine {
 
 	addCommands {
 
-		this.addCommand(\generateWaveforms, "i", {
+		// generateWaveform(id)
+		this.addCommand(\generateWaveform, "i", {
 			arg msg;
-			generateWaveformsOnLoad = (msg[1] == 1);
+			this.queueWaveformGeneration(msg[1]);
 		});
 
 		// noteOn(id, freq, vel, sampleId)
