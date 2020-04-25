@@ -207,7 +207,9 @@ Engine_Timber : CroneEngine {
 				]) * inLoop;
 
 				duckControl = duckControl * EnvGen.ar(Env.new([1, 0, 1], [A2K.kr(duckDuration)], \linear, nil, nil), duckGate);
-        
+
+				duckControl.poll(8, "duckControl");
+
 				// Debug buffer
 				/*BufWr.ar([
 					phase.linlin(firstFrame, lastFrame, 0, 1),
@@ -331,7 +333,11 @@ Engine_Timber : CroneEngine {
 				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
 				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
-        
+
+				gate.poll(8, "gate");
+				killGate.poll(8, "killGate");
+				ampEnvelope.poll(8, "ampEnvelope");
+
 				// Freq modulation
 				freqModRatio = 2.pow((lfo1 * freqModLfo1) + (lfo2 * freqModLfo2) + (modEnvelope * freqModEnv));
 				freq = freq * transposeRatio * detuneRatio;
