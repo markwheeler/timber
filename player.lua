@@ -897,4 +897,5 @@ function init()
   
   beat_clock:start()
   
+  params:default()
 end

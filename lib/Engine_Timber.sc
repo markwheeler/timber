@@ -8,6 +8,7 @@ Engine_Timber : CroneEngine {
 	var maxSamples = 256;
 	var killDuration = 0.003;
 	var waveformDisplayRes = 60;
+	var fadeTimeGlobal = 0;
 
 	var voiceGroup;
 	var voiceList;
@@ -133,7 +134,7 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i] = {
-				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
+				arg fadeTime=0, freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, startFrame, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 
 				var signal, progress, phase, offsetPhase, direction, rate, phaseStart, phaseEnd,
 				firstFrame, lastFrame, shouldLoop, inLoop, loopEnabled, loopInf, duckDuration, duckNumFrames, duckNumFramesShortened, duckGate, duckControl;
@@ -150,6 +151,7 @@ Engine_Timber : CroneEngine {
 				progress = (Sweep.ar(1, SampleRate.ir * rate) + i_lockedStartFrame).clip(firstFrame, lastFrame);
 
 				shouldLoop = loopEnabled * gate.max(loopInf);
+				shouldLoop = Latch.kr(shouldLoop,Impulse.kr(0)+TDelay.kr(Changed.kr(shouldLoop),fadeTime));
 
 				inLoop = Select.ar(direction > 0, [
 					progress < (loopEndFrame - 40), // NOTE: This tiny offset seems odd but avoids some clicks when phasor start changes
@@ -225,7 +227,7 @@ Engine_Timber : CroneEngine {
 		2.do({
 			arg i;
 			players[i + 2] = {
-				arg freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
+				arg fadeTime=0, freqRatio = 1, sampleRate, gate, playMode, voiceId, sampleId, bufnum, numFrames, i_lockedStartFrame, endFrame, loopStartFrame, loopEndFrame;
 				var signal, rate, progress, loopEnabled, oneShotActive, duckDuration, duckControl;
 
 				loopEnabled = InRange.kr(playMode, 0, 1);
@@ -303,7 +305,7 @@ Engine_Timber : CroneEngine {
 
 			SynthDef(name, {
 
-				arg out, sampleRate, freq, transposeRatio, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, vel = 1, pressure = 0, pressureSample = 0, amp = 1,
+				arg out, sampleRate, freq, transposeRatio, detuneRatio = 1, pitchBendRatio = 1, pitchBendSampleRatio = 1, playMode = 0, gate = 0, killGate = 1, vel = 1, pressure = 0, pressureSample = 0, amp = 1,fadeTime=0,
 				lfos, lfo1Fade, lfo2Fade, freqModLfo1, freqModLfo2, freqModEnv, freqMultiplier,
 				ampAttack, ampDecay, ampSustain, ampRelease, modAttack, modDecay, modSustain, modRelease,
 				downSampleTo, bitDepth,
@@ -329,7 +331,7 @@ Engine_Timber : CroneEngine {
 				gate = gate.max(InRange.kr(playMode, 3, 3)); // Ignore gate for one shots
 				killGate = killGate + Impulse.kr(0); // Make sure doneAction fires
 				killEnvelope = EnvGen.ar(envelope: Env.asr(0, 1, killDuration), gate: killGate, doneAction: Done.freeSelf);
-				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack, ampDecay, ampSustain, ampRelease), gate: gate, doneAction: Done.freeSelf);
+				ampEnvelope = EnvGen.ar(envelope: Env.adsr(ampAttack+fadeTime, ampDecay, ampSustain, ampRelease+fadeTime), gate: gate, doneAction: Done.freeSelf);
 				modEnvelope = EnvGen.ar(envelope: Env.adsr(modAttack, modDecay, modSustain, modRelease), gate: gate);
         
 				// Freq modulation
@@ -339,7 +341,7 @@ Engine_Timber : CroneEngine {
 				freqRatio = (freq / i_origFreq) * freqMultiplier;
 
 				// Player
-				signal = SynthDef.wrap(players[i], [\kr, \kr, \kr, \kr], [freqRatio, sampleRate, gate, playMode]);
+				signal = SynthDef.wrap(players[i], [\kr, \kr, \kr, \kr, \kr], [fadeTime, freqRatio, sampleRate, gate, playMode]);
 
 				// Downsample and bit reduction
 				if(i > 1, { // Streaming
@@ -972,6 +974,8 @@ Engine_Timber : CroneEngine {
 				\ampModLfo1, sample.ampModLfo1,
 				\ampModLfo2, sample.ampModLfo2,
 
+				\fadeTime, fadeTimeGlobal,
+
 			], target: voiceGroup).onFree({
 
 				if(sample.streaming == 1, {
@@ -1396,6 +1400,11 @@ Engine_Timber : CroneEngine {
 		this.addCommand(\ampModLfo2, "if", {
 			arg msg;
 			this.setArgOnSample(msg[1], \ampModLfo2, msg[2]);
+		});
+
+		this.addCommand("fadeTime", "f", {
+			arg msg;
+			fadeTimeGlobal=msg[1];
 		});
 
 	}
