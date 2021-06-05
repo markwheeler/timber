@@ -865,7 +865,7 @@ Engine_Timber : CroneEngine {
 	}
 
 	addVoice {
-		arg voiceId, sampleId, freq, pitchBendRatio, vel, delayStart;
+		arg voiceId, sampleId, freq, pitchBendRatio, vel, delayStart,  fadeTime;
 		var defName, sample = samples[sampleId], streamBuffer, delay = 0, cueSecs;
 
 		if(delayStart, { delay = killDuration; });
@@ -877,7 +877,7 @@ Engine_Timber : CroneEngine {
 				}, {
 					defName = \stereoBufferVoice;
 				});
-				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel, delay);
+				this.addSynth(defName, voiceId, sampleId, sample.buffer, freq, pitchBendRatio, vel, delay, fadeTime);
 
 			}, {
 				cueSecs = Date.getDate.rawSeconds;
@@ -890,7 +890,7 @@ Engine_Timber : CroneEngine {
 						defName = \stereoStreamingVoice;
 					});
 					delay = (delay - (Date.getDate.rawSeconds - cueSecs)).max(0);
-					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel, delay);
+					this.addSynth(defName, voiceId, sampleId, streamBuffer, freq, pitchBendRatio, vel, delay, fadeTime);
 					0;
 				});
 			});
@@ -898,7 +898,7 @@ Engine_Timber : CroneEngine {
 	}
 
 	addSynth {
-		arg defName, voiceId, sampleId, buffer, freq, pitchBendRatio, vel, delay;
+		arg defName, voiceId, sampleId, buffer, freq, pitchBendRatio, vel, delay, fadeTime;
 		var newVoice, sample = samples[sampleId];
 
 		newVoice = (id: voiceId, sampleId: sampleId, gate: 1);
