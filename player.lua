@@ -725,6 +725,7 @@ function init()
   midi_clock_in_device = midi.connect(1)
   midi_clock_in_device.event = function(data) midi_event(1, data) end
   
+  local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
   grid_device = grid.connect(1)
   grid_device.key = grid_key
   
