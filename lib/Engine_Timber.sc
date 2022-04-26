@@ -123,7 +123,7 @@ Engine_Timber : CroneEngine {
 		replyFunc = OSCFunc({
 			arg msg;
 			var id = msg[2];
-			scriptAddress.sendBundle(0, ['/enginePlayPosition', msg[3].asInt, msg[4].asInt, msg[5]]);
+			scriptAddress.sendBundle(0, ['/enginePlayPosition', msg[3].asInteger, msg[4].asInteger, msg[5]]);
 		}, path: '/replyPlayPosition', srcID: context.server.addr);
 
 		// Sample defaults
@@ -757,7 +757,7 @@ Engine_Timber : CroneEngine {
 						while({ (frame.round * numChannels + numChannels - 1 < rawData.size).and(abandonCurrentWaveform == false) }, {
 							for(0, numChannels.min(2) - 1, {
 								arg c;
-								var sample = rawData[frame.round.asInt * numChannels + c];
+								var sample = rawData[frame.round.asInteger * numChannels + c];
 								min = sample.min(min);
 								max = sample.max(max);
 							});
@@ -771,8 +771,8 @@ Engine_Timber : CroneEngine {
 								framesInSliceRemaining = framesInSliceRemaining + sliceSize;
 
 								// 0-126, 63 is center (zero)
-								min = min.linlin(-1, 0, 0, 63).round.asInt;
-								max = max.linlin(0, 1, 63, 126).round.asInt;
+								min = min.linlin(-1, 0, 0, 63).round.asInteger;
+								max = max.linlin(0, 1, 63, 126).round.asInteger;
 								waveform = waveform.add(min);
 								waveform = waveform.add(max);
 								min = 0;
