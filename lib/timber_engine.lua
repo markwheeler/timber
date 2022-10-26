@@ -760,7 +760,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   id = id or 0
   if include_beat_params then beat_params = true end
   
-  params:add_separator("Sample")
+  params:add_separator("Sample - " .. id)
   
   params:add{type = "file", id = "sample_" .. id, name = "Sample", action = function(value)
     if samples_meta[id].num_frames > 0 or value ~= "-" then
@@ -846,7 +846,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     end
   end
   
-  params:add_separator("Playback")
+  params:add_separator("Playback - " .. id)
   
   params:add{type = "option", id = "play_mode_" .. id, name = "Play Mode", options = options.PLAY_MODE_BUFFER, default = options.PLAY_MODE_BUFFER_DEFAULT, action = function(value)
     set_play_mode(id, lookup_play_mode(id))
@@ -868,7 +868,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     set_marker(id, "loop_end_frame_")
   end}
   
-  params:add_separator("Freq Mod")
+  params:add_separator("Freq Mod - " .. id)
   
   params:add{type = "control", id = "freq_mod_lfo_1_" .. id, name = "Freq Mod (LFO1)", controlspec = ControlSpec.UNIPOLAR, action = function(value)
     engine.freqModLfo1(id, value)
@@ -883,7 +883,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.views_changed_callback(id)
   end}
   
-  params:add_separator("Filter")
+  params:add_separator("Filter - " .. id)
 
   params:add{type = "option", id = "filter_type_" .. id, name = "Filter Type", options = options.FILTER_TYPE, default = 1, action = function(value)
     engine.filterType(id, value - 1)
@@ -928,7 +928,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.views_changed_callback(id)
   end}
 
-  params:add_separator("Pan & Amp")
+  params:add_separator("Pan & Amp - " .. id)
 
   params:add{type = "control", id = "pan_" .. id, name = "Pan", controlspec = ControlSpec.PAN, formatter = Formatters.bipolar_as_pan_widget, action = function(value)
     engine.pan(id, value)
@@ -960,7 +960,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.views_changed_callback(id)
   end}
   
-  params:add_separator("Amp Env")
+  params:add_separator("Amp Env - " .. id)
   
   params:add{type = "control", id = "amp_env_attack_" .. id, name = "Amp Env Attack", controlspec = specs.AMP_ENV_ATTACK, formatter = Formatters.format_secs, action = function(value)
     engine.ampAttack(id, value)
@@ -983,7 +983,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.env_dirty = true
   end}
 
-  params:add_separator("Mod Env")
+  params:add_separator("Mod Env - " .. id)
 
   params:add{type = "control", id = "mod_env_attack_" .. id, name = "Mod Env Attack", controlspec = specs.MOD_ENV_ATTACK, formatter = Formatters.format_secs, action = function(value)
     engine.modAttack(id, value)
@@ -1006,7 +1006,7 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
     Timber.env_dirty = true
   end}
   
-  params:add_separator("LFO Fade")
+  params:add_separator("LFO Fade - " .. id)
   
   params:add{type = "control", id = "lfo_1_fade_" .. id, name = "LFO1 Fade", controlspec = specs.LFO_FADE, formatter = format_fade, action = function(value)
     if value < 0 then value = specs.LFO_FADE.minval - 0.00001 + math.abs(value) end
@@ -1025,7 +1025,6 @@ function Timber.add_sample_params(id, include_beat_params, extra_params)
   
   Timber.num_sample_params = Timber.num_sample_params + 1
 end
-
 
 
 -- Timber UI views
